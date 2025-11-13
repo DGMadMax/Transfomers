@@ -1,0 +1,3183 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,mathtools}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{microtype}
+\geometry{margin=1in}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  language=Python,
+}
+
+% Disable hyperref warnings for broken links; use explicit option
+\hypersetup{
+  hidelinks=true,
+  breaklinks=true,
+  colorlinks=false
+}
+
+\title{\textbf{Understanding Transformers and Self-Attention} \\ 
+\large Complete Mathematical Deep Dive: From Static to Dynamic Embeddings}
+\author{Deep Learning Fundamentals}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Introduction to Transformers}
+% ============================================================
+
+\subsection{What are Transformers?}
+
+\textbf{Transformers} are a revolutionary neural network architecture introduced in the landmark paper ``Attention Is All You Need'' (Vaswani et al., 2017). They fundamentally changed Natural Language Processing (NLP) by replacing sequential recurrent architectures (RNNs, LSTMs) with a mechanism based entirely on \textbf{parallel attention computations}.
+
+\textbf{Core Innovation}: Transformers process \textbf{all tokens simultaneously} while capturing relationships between words through the \textbf{self-attention mechanism}, eliminating the sequential bottleneck of RNNs.
+
+\subsection{Applications of Transformers}
+\begin{itemize}
+    \item \textbf{Language Models}: GPT-3, GPT-4, LLaMA, Claude, Mistral, DeepSeek
+    \item \textbf{Machine Translation}: Google Translate, DeepL
+    \item \textbf{Text Understanding}: BERT, RoBERTa (search engines, question answering)
+    \item \textbf{Code Generation}: Codex, GitHub Copilot
+    \item \textbf{Multimodal AI}: Vision Transformers (ViT), CLIP, GPT-4V
+    \item \textbf{Scientific Applications}: AlphaFold2 (protein structure prediction)
+\end{itemize}
+
+% ============================================================
+\section{Why Self-Attention is Needed}
+% ============================================================
+
+\subsection{The Critical Problem: Static Embeddings}
+
+\textbf{Static embeddings} (Word2Vec, GloVe, TF-IDF) assign a \textbf{fixed, unchanging vector} to each word:
+
+\begin{equation}
+\text{embedding}(\text{``bank''}) = \mathbf{v}_{\text{bank}} \quad \text{(always identical)}
+\end{equation}
+
+\textbf{The "Bank" Problem}: Consider these two sentences:
+\begin{itemize}
+    \item \textit{Money in the \textbf{bank} grows} (financial institution)
+    \item \textit{River \textbf{bank} flows} (land beside water)
+\end{itemize}
+
+With static embeddings, ``bank'' receives \textbf{identical vectors in both sentences} despite having completely different meanings! This is fundamentally broken.
+
+\subsection{The Solution: Contextual (Dynamic) Embeddings}
+
+\textbf{Contextual embeddings} adapt based on surrounding words:
+
+\begin{align}
+\text{``bank'' in ``money bank grows''} &\rightarrow \mathbf{v}_{\text{financial}} \\
+\text{``bank'' in ``river bank flows''} &\rightarrow \mathbf{v}_{\text{geographical}}
+\end{align}
+
+Where \(\mathbf{v}_{\text{financial}} \neq \mathbf{v}_{\text{geographical}}\).
+
+\textbf{Self-attention achieves this} by making each word's representation a \textbf{learned function of all other words} in the sentence.
+
+\subsection{Bidirectional vs Unidirectional Attention}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{5.5cm}|p{5.5cm}|}
+\hline
+\textbf{Type} & \textbf{Bidirectional (BERT)} & \textbf{Unidirectional (GPT)} \\
+\hline
+\textbf{Direction} & Attends to all words (left + right simultaneously) & Attends only to previous words (left, causal) \\
+\hline
+\textbf{Use Case} & Understanding tasks (classification, question answering, search) & Generation tasks (text completion, dialogue) \\
+\hline
+\textbf{Masking} & No causal mask (sees full context) & Causal mask (prevents looking ahead) \\
+\hline
+\textbf{Example} & BERT reads full sentence before deciding & GPT generates one word at a time \\
+\hline
+\textbf{Training} & Masked Language Modeling (predict masked words) & Next Token Prediction (predict next word) \\
+\hline
+\end{tabular}
+\caption{Bidirectional vs Unidirectional Attention Mechanisms}
+\end{table}
+
+\subsection{Why "Self"-Attention? (Geometric Intuition)}
+
+\textbf{The name "Self-Attention" captures a profound idea}: Each word attends to \textbf{itself and all other words in the same sequence}.
+
+\subsubsection{Three Types of Attention}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{8cm}|}
+\hline
+\textbf{Type} & \textbf{What Attends to What} \\
+\hline
+\textbf{Self-Attention} & Word attends to \textbf{same sequence} (including itself) \\
+\hline
+Cross-Attention & Decoder word attends to \textbf{encoder sequence} (different!) \\
+\hline
+Local Attention & Word attends only to \textbf{nearby words} (window) \\
+\hline
+\end{tabular}
+\caption{Types of Attention Mechanisms}
+\end{table}
+
+\textbf{Why "Self"?}
+
+In self-attention, the Query, Key, and Value all come from the \textbf{same input sequence}:
+
+\begin{equation}
+Q = X W^Q, \quad K = X W^K, \quad V = X W^V
+\end{equation}
+
+where \(X\) is the \textbf{same matrix} for all three!
+
+\textbf{Geometric Representation}:
+
+\begin{verbatim}
+Input: "money bank grows"
+
+Self-Attention (each word looks at ALL words):
+money → [money, bank, grows]  ← Attends to itself + others
+bank  → [money, bank, grows]  ← Attends to itself + others
+grows → [money, bank, grows]  ← Attends to itself + others
+\end{verbatim}
+
+\textbf{Contrast with Cross-Attention} (Encoder-Decoder):
+
+\begin{verbatim}
+Encoder: "I love cats"
+Decoder: "J'aime les chats"
+
+Cross-Attention (decoder attends to encoder):
+"J'aime" → [I, love, cats]  ← Decoder word → Encoder words
+"les"   → [I, love, cats]  ← Different sequences!
+"chats" → [I, love, cats]  ← NOT "self"
+\end{verbatim}
+
+\textbf{Geometric Intuition}: Think of self-attention as:
+\begin{itemize}
+    \item Each word is a point in high-dimensional space (512 dims)
+    \item Self-attention measures: "How should I weight my neighbors?"
+    \item "Neighbors" = all other words (including myself)
+    \item Result: Each point's representation becomes a weighted average of surrounding points
+\end{itemize}
+
+\textbf{Mathematical Beauty}:
+\begin{equation}
+y_i = \sum_{j=1}^{n} \underbrace{\text{attention}(x_i, x_j)}_{\text{"self" interaction}} \cdot x_j
+\end{equation}
+
+The word \(x_i\) attends to all words \(x_j\) \textbf{including itself} (when \(j = i\))!
+
+% ============================================================
+\section{Static vs Dynamic Embeddings: Complete Comparison}
+% ============================================================
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{5cm}|p{5.5cm}|}
+\hline
+\textbf{Property} & \textbf{Static (Word2Vec/GloVe)} & \textbf{Dynamic (Transformers)} \\
+\hline
+Context-awareness & None & Full context from entire sentence \\
+\hline
+Training method & Pre-trained separately on co-occurrence statistics & End-to-end with model via backpropagation \\
+\hline
+Updates during training & Fixed after pre-training & Continuously updated during training \\
+\hline
+Representation & Single vector per word type & Different vector for each occurrence \\
+\hline
+Example: ``bank'' & Always same vector & Changes: financial vs geographical \\
+\hline
+Polysemy handling & Cannot distinguish & Disambiguates based on context \\
+\hline
+Memory & Small (one vector per word) & Larger (parameters + attention) \\
+\hline
+Quality & Lower for ambiguous words & Higher, context-aware \\
+\hline
+\end{tabular}
+\caption{Comprehensive Comparison: Static vs Dynamic Embeddings}
+\end{table}
+
+\textbf{Mathematical Distinction}:
+
+\textbf{Static Approach}:
+\begin{equation}
+e_{\text{bank}} = \text{lookup\_table}[\text{``bank''}] \quad \text{(context-independent)}
+\end{equation}
+
+\textbf{Dynamic Approach (Self-Attention)}:
+\begin{equation}
+e_{\text{bank}}^{\text{contextual}} = f(e_{\text{bank}}, e_{\text{money}}, e_{\text{grows}}) \quad \text{(context-dependent)}
+\end{equation}
+
+% ============================================================
+\section{Complete Self-Attention Pipeline}
+% ============================================================
+
+\subsection{Working Example}
+
+Throughout this document, we'll use this example:
+
+\begin{center}
+\large\texttt{Input Text: ``money bank grows''}
+\end{center}
+
+% ============================================================
+\section{PART 1: Tokenization - Text to Token IDs}
+% ============================================================
+
+\subsection{What is BPE Tokenization?}
+
+\textbf{Byte-Pair Encoding (BPE)} is an algorithm that builds a vocabulary by iteratively merging the most frequent character pairs. It was originally developed for text compression, then adopted by OpenAI for GPT tokenization.
+
+\subsection{BPE Training Process (Pre-training Phase)}
+
+The tokenizer is trained once on billions of words:
+
+\begin{enumerate}
+    \item \textbf{Corpus Collection}: Gather massive text corpus (e.g., 10 billion words)
+    \item \textbf{Frequency Counting}: Count how often each word appears
+    \item \textbf{Character Initialization}: Start with individual characters/bytes as tokens
+    \item \textbf{Iterative Merging}: Repeatedly merge most frequent character pairs
+    \item \textbf{Vocabulary Building}: Build vocabulary up to desired size (e.g., 50,000 tokens)
+\end{enumerate}
+
+\subsection{Vocabulary Assignment}
+
+After training, each unique token (word, subword, or character) gets an \textbf{arbitrary integer ID}:
+
+\begin{lstlisting}[language=Python]
+vocabulary = {
+    "<pad>": 0,      # Padding token
+    "<unk>": 1,      # Unknown token
+    "<start>": 2,    # Start of sequence
+    "the": 3,        # Most frequent word
+    "a": 4,
+    "is": 5,
+    ...
+    "money": 1523,   # Arbitrary ID assignment
+    ...
+    "bank": 2891,    # Different arbitrary ID
+    ...
+    "grows": 4562,   # Another arbitrary ID
+    ...
+    "zzz": 49999     # Last token
+}
+vocab_size = 50000  # Total unique tokens
+\end{lstlisting}
+
+\subsection{Tokenization Process (Inference Phase)}
+
+\begin{equation}
+\text{Input Text} \xrightarrow{\text{BPE Tokenizer}} \text{Token IDs}
+\end{equation}
+
+\begin{verbatim}
+Input:     "money bank grows"
+             |      |      |
+Lookup:     1523   2891   4562
+             |      |      |
+Output:   [1523, 2891, 4562]  <- Token IDs (integers)
+\end{verbatim}
+
+\subsection{Why These Specific Numbers?}
+
+\textbf{Question}: Why is ``money'' = 1523 and not 0?
+
+\textbf{Answer}: The numbers are assigned based on the \textbf{order tokens were added} to the vocabulary during BPE training:
+\begin{itemize}
+    \item Special tokens (\texttt{<pad>}, \texttt{<unk>}) get IDs 0, 1, 2...
+    \item Most frequent single characters get next IDs
+    \item Merged pairs get IDs as they're created
+    \item Full words that appear frequently get IDs based on discovery order
+\end{itemize}
+
+The numbers have \textbf{NO semantic meaning} - they're just lookup indices!
+
+% ============================================================
+\section{PART 2: Embedding Layer - Token IDs to Dense Vectors}
+% ============================================================
+
+\subsection{Mathematical Definition}
+
+An embedding layer is a \textbf{learnable lookup table} represented as a weight matrix:
+
+\begin{equation}
+E \in \mathbb{R}^{V \times D}
+\end{equation}
+
+where:
+\begin{itemize}
+    \item \(V = 50{,}000\) (vocabulary size - number of unique tokens)
+    \item \(D = 512\) (embedding dimension - number of features per token)
+\end{itemize}
+
+\subsection{Embedding Table Visualization}
+
+\begin{verbatim}
+Embedding Matrix E: (50000 rows x 512 columns)
+
+           Feature  Feature  Feature       Feature
+              0        1        2     ...    511
+           -------  -------  -------  ...  -------
+Token 0:   [ 0.23,  -0.45,   0.67,   ...,   0.12 ] <- <pad>
+Token 1:   [ 0.12,   0.89,  -0.34,   ...,  -0.56 ] <- <unk>
+...
+Token 1523:[ 0.82,  -0.34,   0.56,   ...,   0.91 ] <- "money"
+...
+\end{verbatim}
+
+\subsection{Understanding 512 Dimensions}
+% (content unchanged for brevity)
+
+\subsection{Embedding Lookup Operation}
+
+Given token IDs \([1523, 2891, 4562]\), we perform \textbf{table lookup}:
+
+\begin{align}
+e_{\text{money}} &= E[1523, :] \in \mathbb{R}^{512} \\
+e_{\text{bank}} &= E[2891, :] \in \mathbb{R}^{512} \\
+e_{\text{grows}} &= E[4562, :] \in \mathbb{R}^{512}
+\end{align}
+
+\textbf{Stacked Embedding Matrix}:
+\begin{equation}
+X = \begin{bmatrix}
+e_{\text{money}} \\
+e_{\text{bank}} \\
+e_{\text{grows}}
+\end{bmatrix} \in \mathbb{R}^{3 \times 512}
+\end{equation}
+
+\subsection{Initial State: Random Initialization}
+% (content unchanged for brevity)
+
+% ============================================================
+\section{PART 3: Self-Attention - Creating Q, K, V}
+% ============================================================
+
+\subsection{Learnable Projection Matrices}
+
+Three weight matrices transform embeddings to attention space:
+
+\begin{align}
+W^Q &\in \mathbb{R}^{d_{\text{model}} \times d_k} \quad \text{(Query weights)} \\
+W^K &\in \mathbb{R}^{d_{\text{model}} \times d_k} \quad \text{(Key weights)} \\
+W^V &\in \mathbb{R}^{d_{\text{model}} \times d_k} \quad \text{(Value weights)}
+\end{align}
+
+where:
+\begin{itemize}
+    \item \(d_{\text{model}} = 512\) (embedding dimension)
+    \item \(d_k = 64\) (attention dimension, typically \(d_{\text{model}} / \text{num\_heads}\))
+\end{itemize}
+
+\textbf{Note:} these matrices are typically implemented as Linear layers: \texttt{nn.Linear(d\_model, d\_k)}.
+
+\subsection{Why Three Separate Projections?}
+
+\textbf{Intuition}:
+\begin{itemize}
+    \item \textbf{Query (Q)}: ``What am I looking for?'' - What information does this word need?
+    \item \textbf{Key (K)}: ``What information do I have?'' - What can I offer to others?
+    \item \textbf{Value (V)}: ``Here's my actual content'' - The information to share
+\end{itemize}
+
+\textbf{Real-world analogy}: Library search
+\begin{itemize}
+    \item \textbf{Query}: Your search terms (``machine learning books'')
+    \item \textbf{Key}: Book index/keywords (book categories, titles)
+    \item \textbf{Value}: Actual book content (what you retrieve)
+\end{itemize}
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1\textwidth]{initial.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+\subsection{Q, K, V Computation}
+
+\textbf{Matrix Multiplication}:
+\begin{align}
+Q &= X \cdot (W^Q)^T \in \mathbb{R}^{3 \times 64} \\
+K &= X \cdot (W^K)^T \in \mathbb{R}^{3 \times 64} \\
+V &= X \cdot (W^V)^T \in \mathbb{R}^{3 \times 64}
+\end{align}
+
+\textbf{Dimensional Analysis}:
+\begin{equation}
+X_{(3 \times 512)} \cdot (W^Q_{(64 \times 512)})^T = X_{(3 \times 512)} \cdot W^Q_{(512 \times 64)} = Q_{(3 \times 64)}
+\end{equation}
+
+\textbf{Verification}:
+\begin{itemize}
+    \item Input: 3 words, each 512-dimensional
+    \item Output: 3 words, each 64-dimensional (compressed for attention)
+\end{itemize}
+
+\subsection{Complete PyTorch Implementation}
+
+\begin{lstlisting}[language=Python]
+import torch
+import torch.nn as nn
+
+# Input embeddings from previous step
+# X: (3, 512) matrix
+
+# W_Q, W_K, W_V: LEARNED PARAMETERS
+# Randomly initialized, updated via backpropagation
+W_Q = nn.Linear(512, 64, bias=False)  # (64, 512)
+W_K = nn.Linear(512, 64, bias=False)  # (64, 512)
+W_V = nn.Linear(512, 64, bias=False)  # (64, 512)
+
+# === PROJECT TO Q, K, V ===
+Q = X @ W_Q.weight.T  # (3, 512) @ (512, 64) = (3, 64)
+K = X @ W_K.weight.T  # (3, 512) @ (512, 64) = (3, 64)
+V = X @ W_V.weight.T  # (3, 512) @ (512, 64) = (3, 64)
+
+print(f"Q shape: {Q.shape}")  # torch.Size([3, 64])
+print(f"K shape: {K.shape}")  # torch.Size([3, 64])
+print(f"V shape: {V.shape}")  # torch.Size([3, 64])
+
+# Individual query, key, value vectors
+q_money = Q[0]  # (64,) - what "money" is looking for
+k_money = K[0]  # (64,) - what "money" can offer
+v_money = V[0]  # (64,) - "money"'s content to share
+
+q_bank = Q[1]  # (64,)
+k_bank = K[1]  # (64,)
+v_bank = V[1]  # (64,)
+
+q_grows = Q[2]  # (64,)
+k_grows = K[2]  # (64,)
+v_grows = V[2]  # (64,)
+\end{lstlisting}
+
+\subsection{Matrix Dimensions Summary}
+
+\begin{verbatim}
+Input X:        (3 x 512)   <- 3 words, 512 features each
+W_Q weights:    (64 x 512)  <- Learned projection
+W_Q^T:          (512 x 64)  <- Transposed
+
+Matrix multiplication:
+X @ W_Q^T = (3 x 512) @ (512 x 64) = (3 x 64)
+
+Result Q:       (3 x 64)    <- 3 words, 64 attention dims
+Result K:       (3 x 64)    <- Same shape
+Result V:       (3 x 64)    <- Same shape
+\end{verbatim}
+
+% ============================================================
+\section{PART 4: Attention Score Computation}
+% ============================================================
+
+\subsection{Step 1: Compute Similarity (Dot Product)}
+
+Calculate how much each word should attend to every other word:
+
+\begin{equation}
+\text{Scores} = Q \cdot K^T \in \mathbb{R}^{3 \times 3}
+\end{equation}
+
+\textbf{Expanded form}:
+\begin{equation}
+\text{Scores} = \begin{bmatrix}
+q_{\text{money}} \\
+q_{\text{bank}} \\
+q_{\text{grows}}
+\end{bmatrix}_{(3 \times 64)} \cdot \begin{bmatrix}
+k_{\text{money}} & k_{\text{bank}} & k_{\text{grows}}
+\end{bmatrix}_{(64 \times 3)}
+\end{equation}
+
+\begin{equation}
+\text{Scores} = \begin{bmatrix}
+q_{\text{money}} \cdot k_{\text{money}} & q_{\text{money}} \cdot k_{\text{bank}} & q_{\text{money}} \cdot k_{\text{grows}} \\
+q_{\text{bank}} \cdot k_{\text{money}} & q_{\text{bank}} \cdot k_{\text{bank}} & q_{\text{bank}} \cdot k_{\text{grows}} \\
+q_{\text{grows}} \cdot k_{\text{money}} & q_{\text{grows}} \cdot k_{\text{bank}} & q_{\text{grows}} \cdot k_{\text{grows}}
+\end{bmatrix}_{(3 \times 3)}
+\end{equation}
+
+\textbf{Simplified notation}:
+\begin{equation}
+\text{Scores} = \begin{bmatrix}
+s_{11} & s_{12} & s_{13} \\
+s_{21} & s_{22} & s_{23} \\
+s_{31} & s_{32} & s_{33}
+\end{bmatrix}
+\end{equation}
+
+\textbf{Example with actual numbers (hypothetical)}:
+\begin{equation}
+\text{Scores} = \begin{bmatrix}
+15.2 & 12.8 & 8.3 \\
+18.7 & 22.1 & 14.5 \\
+9.4 & 11.6 & 16.8
+\end{bmatrix}
+\end{equation}
+
+\subsection{Step 2: Scaling}
+% Add this AFTER your existing "Step 2: Scaling" subsection
+
+\subsection{Why Scale by \(\sqrt{d_k}\)? (Variance Control)}
+
+\textbf{The Fundamental Problem}: For \(d_k\)-dimensional vectors, the variance of dot products grows linearly with dimension!
+
+\textbf{Mathematical Proof}:
+
+Given two random vectors \(\mathbf{q}, \mathbf{k} \in \mathbb{R}^{d_k}\) where each element has mean 0 and variance 1:
+
+\begin{equation}
+\text{score} = \mathbf{q} \cdot \mathbf{k} = \sum_{i=1}^{d_k} q_i k_i
+\end{equation}
+
+\textbf{Variance grows with dimension}:
+\begin{align}
+\text{Var}(\mathbf{q} \cdot \mathbf{k}) &= \text{Var}\left(\sum_{i=1}^{d_k} q_i k_i\right) \\
+&= \sum_{i=1}^{d_k} \text{Var}(q_i k_i) \quad \text{(independence)} \\
+&= \sum_{i=1}^{d_k} 1 \quad \text{(since Var}(q_i k_i) = 1) \\
+&= d_k
+\end{align}
+
+\textbf{For \(d_k = 64\)}: Variance = 64 → extremely large values → softmax saturation!
+
+\textbf{Example without scaling}:
+\begin{verbatim}
+d_k = 64
+Scores: [-45, 52, -38, 61, ...]  (huge range!)
+Standard deviation ≈ √64 = 8
+
+After softmax:
+softmax([52, -45, 3, -2]) ≈ [1.0, 0.0, 0.0, 0.0]  # One weight dominates!
+Gradients ≈ 0 → vanishing gradient problem ❌
+\end{verbatim}
+
+\textbf{Solution: Divide by \(\sqrt{d_k}\)}:
+
+\begin{equation}
+\text{scaled\_score} = \frac{\mathbf{q} \cdot \mathbf{k}}{\sqrt{d_k}}
+\end{equation}
+
+\textbf{Variance after scaling}:
+\begin{equation}
+\text{Var}\left(\frac{\mathbf{q} \cdot \mathbf{k}}{\sqrt{d_k}}\right) = \frac{1}{d_k} \cdot \text{Var}(\mathbf{q} \cdot \mathbf{k}) = \frac{1}{d_k} \cdot d_k = 1
+\end{equation}
+
+**Result**: Variance normalized to 1 (unit variance) regardless of dimension! ✅
+
+\textbf{Why specifically \(\sqrt{d_k}\), not \(d_k\) or \(d_k^2\)?}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Scaling Factor} & \textbf{Resulting Variance} & \textbf{Problem} \\
+\hline
+No scaling (\(\div 1\)) & \(\text{Var} = d_k = 64\) & Too high! Softmax saturates \\
+\hline
+Divide by \(d_k\) & \(\text{Var} = 1/d_k \approx 0.016\) & Too low! All weights similar \\
+\hline
+\textbf{Divide by \(\sqrt{d_k}\)} & \textbf{\(\text{Var} = 1\)} & \textbf{Perfect! Balanced} \\
+\hline
+Divide by \(d_k^2\) & \(\text{Var} = 1/d_k^2 \approx 0.0002\) & Way too small! \\
+\hline
+\end{tabular}
+\caption{Why \(\sqrt{d_k}\) is Optimal}
+\end{table}
+
+\textbf{Only \(\sqrt{d_k}\) gives unit variance} - this is not arbitrary!
+
+\textbf{Problem}: Large dot products cause softmax to saturate (gradients vanish).
+
+\textbf{Solution}: Scale by \(\sqrt{d_k}\):
+
+\begin{equation}
+\text{Scaled Scores} = \frac{\text{Scores}}{\sqrt{d_k}} = \frac{\text{Scores}}{\sqrt{64}} = \frac{\text{Scores}}{8}
+\end{equation}
+
+\textbf{Why \(\sqrt{d_k}\)?} For high-dimensional vectors, dot products grow proportionally to dimension. Scaling normalizes this.
+
+\textbf{Scaled example}:
+\begin{equation}
+\text{Scaled} = \begin{bmatrix}
+1.90 & 1.60 & 1.04 \\
+2.34 & 2.76 & 1.81 \\
+1.18 & 1.45 & 2.10
+\end{bmatrix}
+\end{equation}
+
+
+
+\begin{lstlisting}[language=Python]
+import math
+
+# Compute attention scores (dot product)
+scores = torch.matmul(Q, K.transpose(-2, -1))  
+# (3, 64) @ (64, 3) = (3, 3)
+
+print(f"Scores shape: {scores.shape}")  
+# torch.Size([3, 3])
+
+# Scale by sqrt(d_k)
+d_k = 64
+scaled_scores = scores / math.sqrt(d_k)
+
+print(f"Scaled scores:\n{scaled_scores}")
+\end{lstlisting}
+
+% ============================================================
+\section{PART 5: Softmax - Attention Weights}
+% ============================================================
+
+\subsection{Softmax Mathematical Formula}
+
+For vector \(\mathbf{x} = [x_1, x_2, \ldots, x_n]\):
+
+\begin{equation}
+\boxed{\text{softmax}(x_i) = \frac{e^{x_i}}{\sum_{j=1}^{n} e^{x_j}}}
+\end{equation}
+
+\textbf{Properties}:
+\begin{itemize}
+    \item Output range: \((0, 1)\) (always positive, never exactly 0 or 1)
+    \item Sum property: \(\sum_{i=1}^{n} \text{softmax}(x_i) = 1\) (probability distribution)
+    \item Monotonic: Larger input = larger output
+    \item Differentiable: Enables backpropagation
+\end{itemize}
+
+
+\subsection{Detailed Softmax Calculation Example}
+
+\textbf{Given}: Scaled scores for ``money'' attending to all words:
+\[
+\mathbf{s} = [s_{11}, s_{12}, s_{13}] = [2.0, 1.0, 0.1]
+\]
+
+\textbf{Step 1: Exponentiate each element}
+\begin{align}
+e^{s_{11}} &= e^{2.0} \approx 7.389 \\
+e^{s_{12}} &= e^{1.0} \approx 2.718 \\
+e^{s_{13}} &= e^{0.1} \approx 1.105
+\end{align}
+
+\textbf{Step 2: Sum all exponentials}
+\begin{equation}
+\text{Sum} = 7.389 + 2.718 + 1.105 = 11.212
+\end{equation}
+
+\textbf{Step 3: Divide each by sum (normalize)}
+\begin{align}
+w_{11} &= \frac{7.389}{11.212} \approx 0.659 \quad \text{(66\% to "money")} \\
+w_{12} &= \frac{2.718}{11.212} \approx 0.242 \quad \text{(24\% to "bank")} \\
+w_{13} &= \frac{1.105}{11.212} \approx 0.099 \quad \text{(10\% to "grows")}
+\end{align}
+
+\textbf{Verification}: \(0.659 + 0.242 + 0.099 = 1.000\) ✓
+
+\subsection{Complete Attention Weights Matrix}
+
+Apply softmax \textbf{row-wise} to all scores:
+
+\begin{equation}
+W = \text{softmax}(\text{Scaled Scores}) = \begin{bmatrix}
+w_{11} & w_{12} & w_{13} \\
+w_{21} & w_{22} & w_{23} \\
+w_{31} & w_{32} & w_{33}
+\end{bmatrix}
+\end{equation}
+
+\textbf{Example attention weights}:
+\begin{equation}
+W = \begin{bmatrix}
+0.33 & 0.35 & 0.32 \\
+0.28 & 0.42 & 0.30 \\
+0.31 & 0.33 & 0.36
+\end{bmatrix}
+\end{equation}
+
+\textbf{Interpretation}:
+\begin{itemize}
+    \item \textbf{Row 1 (``money'')}: Attends 33\% to itself, 35\% to ``bank'', 32\% to ``grows''
+    \item \textbf{Row 2 (``bank'')}: Attends 28\% to ``money'', 42\% to itself, 30\% to ``grows''
+    \begin{itemize}
+        \item High self-attention (42\%) suggests ``bank'' is important in this context!
+        \item Significant attention to ``money'' (28\%) captures financial relationship
+    \end{itemize}
+    \item \textbf{Row 3 (``grows'')}: Attends 31\% to ``money'', 33\% to ``bank'', 36\% to itself
+\end{itemize}
+
+\subsection{PyTorch Implementation}
+
+\begin{lstlisting}[language=Python]
+# Apply softmax (row-wise normalization)
+attention_weights = torch.softmax(scaled_scores, dim=-1)
+
+print(f"Attention weights shape: {attention_weights.shape}")  
+# torch.Size([3, 3])
+
+print(f"Attention weights:\n{attention_weights}")
+# Each row sums to 1.0
+
+# Verify sum = 1 for each row
+row_sums = attention_weights.sum(dim=-1)
+print(f"Row sums (should be 1): {row_sums}")
+# tensor([1.0000, 1.0000, 1.0000])
+
+# For "money" word specifically
+attention_weights_money = attention_weights[0]
+print(f"Money attends to [money, bank, grows]: {attention_weights_money}")
+\end{lstlisting}
+
+% ============================================================
+\section{PART 6: Weighted Sum - Final Output}
+% ============================================================
+
+\subsection{Computing Contextualized Embeddings}
+
+Multiply attention weights by value vectors:
+
+\begin{equation}
+Y = W \cdot V \in \mathbb{R}^{3 \times 64}
+\end{equation}
+
+\textbf{Full expansion}:
+\begin{equation}
+Y = \begin{bmatrix}
+w_{11} & w_{12} & w_{13} \\
+w_{21} & w_{22} & w_{23} \\
+w_{31} & w_{32} & w_{33}
+\end{bmatrix}_{(3 \times 3)} \cdot \begin{bmatrix}
+v_{\text{money}} \\
+v_{\text{bank}} \\
+v_{\text{grows}}
+\end{bmatrix}_{(3 \times 64)} = \begin{bmatrix}
+y_{\text{money}} \\
+y_{\text{bank}} \\
+y_{\text{grows}}
+\end{bmatrix}_{(3 \times 64)}
+\end{equation}
+
+\subsection{Detailed Calculation for ``money''}
+
+\textbf{Formula}:
+\begin{equation}
+y_{\text{money}} = w_{11} \cdot v_{\text{money}} + w_{12} \cdot v_{\text{bank}} + w_{13} \cdot v_{\text{grows}}
+\end{equation}
+
+\textbf{With actual weights}:
+\begin{equation}
+y_{\text{money}} = 0.33 \cdot v_{\text{money}} + 0.35 \cdot v_{\text{bank}} + 0.32 \cdot v_{\text{grows}}
+\end{equation}
+
+\textbf{What this means}:
+\begin{itemize}
+    \item \(y_{\text{money}}\) is a \textbf{contextualized embedding}!
+    \item Contains 33\% of ``money'''s information
+    \item Contains 35\% of ``bank'''s information (financial context!)
+    \item Contains 32\% of ``grows'''s information (growth/financial concept)
+    \item Result: ``money'' now \textbf{knows it's in a financial context}
+\end{itemize}
+
+\subsection{Comparison: Before vs After Self-Attention}
+
+\textbf{Before (static embedding)}:
+\begin{equation}
+e_{\text{money}} = [0.82, -0.34, 0.56, \ldots] \quad \text{(context-independent)}
+\end{equation}
+
+\textbf{After (contextualized via self-attention)}:
+\begin{equation}
+y_{\text{money}} = [0.74, -0.12, 0.68, \ldots] \quad \text{(includes bank + grows context)}
+\end{equation}
+
+The values changed because ``money'' is now aware it appears with ``bank'' and ``grows''!
+
+\subsection{Complete PyTorch Implementation}
+
+\begin{lstlisting}[language=Python]
+# Weighted sum of values
+output = torch.matmul(attention_weights, V)  
+# (3, 3) @ (3, 64) = (3, 64)
+
+print(f"Output shape: {output.shape}")  
+# torch.Size([3, 64])
+
+# Individual contextualized embeddings
+y_money = output[0]  # (64,) - contextualized!
+y_bank = output[1]   # (64,) - contextualized!
+y_grows = output[2]  # (64,) - contextualized!
+
+# Manual calculation for "money" (verification)
+attention_weights_money = attention_weights[0]  # [w11, w12, w13]
+
+y_money_manual = (
+    attention_weights_money[0] * V[0] +  # v_money
+    attention_weights_money[1] * V[1] +  # v_bank
+    attention_weights_money[2] * V[2]    # v_grows
+)
+
+# Verify they match
+print(f"Automatic: {y_money[:5]}")
+print(f"Manual:    {y_money_manual[:5]}")
+# Should be identical!
+\end{lstlisting}
+
+% ============================================================
+\section{Complete Self-Attention Formula}
+% ============================================================
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1\textwidth]{second.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+\subsection{Single Unified Equation}
+
+The \textbf{entire self-attention mechanism} in one formula:
+
+\begin{equation}
+\boxed{\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right) V}
+\end{equation}
+
+\subsection{Step-by-Step Expansion}
+
+
+\textbf{Step 1: Compute Q, K, V}
+\begin{equation}
+Q = X W^Q, \quad K = X W^K, \quad V = X W^V
+\end{equation}
+
+\textbf{Step 2: Compute attention scores}
+\begin{equation}
+\text{Scores} = Q K^T \in \mathbb{R}^{n \times n}
+\end{equation}
+
+\textbf{Step 3: Scale scores}
+\begin{equation}
+\text{Scaled} = \frac{\text{Scores}}{\sqrt{d_k}}
+\end{equation}
+
+\textbf{Step 4: Apply softmax}
+\begin{equation}
+\text{Attention Weights} = \text{softmax}(\text{Scaled}) \in \mathbb{R}^{n \times n}
+\end{equation}
+
+\textbf{Step 5: Weighted sum}
+\begin{equation}
+\text{Output} = \text{Attention Weights} \cdot V \in \mathbb{R}^{n \times d_k}
+\end{equation}
+
+
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1\textwidth]{parrellel processing.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+% ============================================================
+\section{Complete Production Code}
+% ============================================================
+
+\begin{lstlisting}[language=Python]
+import torch
+import torch.nn as nn
+import math
+
+class SelfAttention(nn.Module):
+    """
+    Production-grade Self-Attention implementation
+    """
+    def __init__(self, d_model, d_k):
+        super().__init__()
+        self.d_k = d_k
+        
+        # Learned projection matrices
+        # Initially random, updated via backpropagation
+        self.W_Q = nn.Linear(d_model, d_k, bias=False)
+        self.W_K = nn.Linear(d_model, d_k, bias=False)
+        self.W_V = nn.Linear(d_model, d_k, bias=False)
+    
+    def forward(self, X):
+        """
+        Args:
+            X: (batch_size, seq_len, d_model)
+        Returns:
+            output: (batch_size, seq_len, d_k)
+            attention_weights: (batch_size, seq_len, seq_len)
+        """
+        # Step 1: Project to Q, K, V
+        Q = self.W_Q(X)  # (batch, seq_len, d_k)
+        K = self.W_K(X)  # (batch, seq_len, d_k)
+        V = self.W_V(X)  # (batch, seq_len, d_k)
+        
+        # Step 2: Compute attention scores
+        scores = torch.matmul(Q, K.transpose(-2, -1))
+        # (batch, seq_len, seq_len)
+        
+        # Step 3: Scale
+        scores = scores / math.sqrt(self.d_k)
+        
+        # Step 4: Apply softmax (row-wise)
+        attention_weights = torch.softmax(scores, dim=-1)
+        
+        # Step 5: Weighted sum of values
+        output = torch.matmul(attention_weights, V)
+        # (batch, seq_len, d_k)
+        
+        return output, attention_weights
+
+
+# ============================================================
+# COMPLETE USAGE EXAMPLE
+# ============================================================
+
+# Configuration
+vocab_size = 50000
+d_model = 512  # Embedding dimension
+d_k = 64       # Attention dimension
+
+# Step 1: Create embedding layer
+embedding = nn.Embedding(vocab_size, d_model)
+
+# Step 2: Tokenize input
+sentence = "money bank grows"
+token_ids = torch.tensor([1523, 2891, 4562])
+
+# Step 3: Get embeddings
+X = embedding(token_ids)      # (3, 512)
+X = X.unsqueeze(0)            # Add batch dim: (1, 3, 512)
+
+# Step 4: Apply self-attention
+attention = SelfAttention(d_model, d_k)
+output, weights = attention(X)
+
+# Results
+print(f"Input shape:  {X.shape}")        # (1, 3, 512)
+print(f"Output shape: {output.shape}")   # (1, 3, 64)
+print(f"Attention weights shape: {weights.shape}")  # (1, 3, 3)
+
+print("\nAttention weights (how each word attends to others):")
+print(weights[0])
+# tensor([[0.33, 0.35, 0.32],  # money -> [money, bank, grows]
+#         [0.28, 0.42, 0.30],  # bank  -> [money, bank, grows]
+#         [0.31, 0.33, 0.36]]) # grows -> [money, bank, grows]
+
+# Each row sums to 1.0
+print(f"\nRow sums: {weights[0].sum(dim=-1)}")
+# tensor([1., 1., 1.])
+\end{lstlisting}
+
+% ============================================================
+\section{Visualization: Complete Pipeline}
+% ============================================================
+
+\begin{verbatim}
+========================================
+COMPLETE SELF-ATTENTION PIPELINE
+========================================
+
+INPUT TEXT: "money bank grows"
+     |
+     v
+[TOKENIZATION] (BPE Trained Vocabulary)
+     |
+     v
+TOKEN IDs: [1523, 2891, 4562]
+(Arbitrary integers, just vocabulary indices)
+     |
+     v
+[EMBEDDING LOOKUP] (50000 x 512 learned table)
+     |
+     v
+EMBEDDINGS X: (3 x 512)
+  e_money = [0.82, -0.34, 0.56, ..., 0.91]  (512 nums)
+  e_bank  = [-0.23, 0.56, 0.89, ..., -0.67] (512 nums)
+  e_grows = [0.67, -0.89, 0.12, ..., 0.34]  (512 nums)
+     |
+     v
+[LINEAR PROJECTIONS] (W_Q, W_K, W_V learned)
+     |
+     v
+Q, K, V: (3 x 64) each
+(Compressed from 512 to 64 dimensions)
+     |
+     v
+[ATTENTION SCORES] Q @ K^T
+     |
+     v
+Scores Matrix: (3 x 3)
+[[s11, s12, s13],
+ [s21, s22, s23],
+ [s31, s32, s33]]
+     |
+     v
+[SCALING] divide by sqrt(64) = 8
+     |
+     v
+Scaled Scores: (3 x 3)
+     |
+     v
+[SOFTMAX] (row-wise normalization)
+     |
+     v
+Attention Weights: (3 x 3)
+[[0.33, 0.35, 0.32],  <- Each row sums to 1.0
+ [0.28, 0.42, 0.30],
+ [0.31, 0.33, 0.36]]
+     |
+     v
+[WEIGHTED SUM] Weights @ V
+     |
+     v
+OUTPUT Y: (3 x 64)
+  y_money = contextualized 64-dim vector
+  y_bank  = contextualized 64-dim vector
+  y_grows = contextualized 64-dim vector
+     |
+     v
+Each word now "aware" of context!
+\end{verbatim}
+
+
+% ============================================================
+\section{Key Insights Summary}
+% ============================================================
+
+\begin{enumerate}
+    \item \textbf{Token IDs}: Arbitrary unique integers serving as vocabulary indices
+    \begin{itemize}
+        \item ``money'' = 1523 is meaningless - could be any number
+        \item Only requirement: unique per token
+    \end{itemize}
+    
+    \item \textbf{Embeddings}: 512-dimensional learned vectors
+    \begin{itemize}
+        \item Each dimension = one semantic feature
+        \item Updated via backpropagation during training
+        \item Initially random, becomes meaningful after training
+    \end{itemize}
+    
+    \item \textbf{\(W^Q, W^K, W^V\)}: Learned projection matrices
+    \begin{itemize}
+        \item Randomly initialized at start
+        \item Transform embeddings to attention space
+        \item Learned what information to extract (Q), match (K), share (V)
+    \end{itemize}
+    
+    \item \textbf{Attention Scores}: Measure similarity via dot product
+    \begin{itemize}
+        \item High score = high similarity = should attend more
+        \item Scaled by \(\sqrt{d_k}\) to prevent saturation
+    \end{itemize}
+    
+    \item \textbf{Softmax}: Converts scores to probability distribution
+    \begin{itemize}
+        \item Ensures weights sum to 1.0
+        \item Enables gradient flow during backpropagation
+    \end{itemize}
+    
+    \item \textbf{Output}: Contextualized representations
+    \begin{itemize}
+        \item Each word ``aware'' of all other words
+        \item Dynamic based on specific context
+        \item Solves the ``bank'' ambiguity problem!
+    \end{itemize}
+    
+    \item \textbf{Parallel Processing}: ALL tokens processed simultaneously
+    \begin{itemize}
+        \item Unlike RNNs (sequential, one token at a time)
+        \item Enables efficient GPU utilization
+        \item Faster training on large datasets
+    \end{itemize}
+\end{enumerate}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1\textwidth]{geometric1.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1\textwidth]{geometric2.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.8\textwidth]{geometric3.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+
+% ============================================================
+\section{Positional Encoding}
+\label{sec:positional_encoding}
+% ============================================================
+
+\subsection{The Critical Problem: Self-Attention is Permutation-Invariant}
+
+\textbf{Self-attention processes all tokens in parallel}, which is powerful but creates a fundamental problem:
+
+\textbf{Example - The Ambiguity}:
+\begin{center}
+\textit{``Lion killed by deer''} vs \textit{``Deer killed by lion''}
+\end{center}
+
+Both sentences have identical words, just in different order. With pure self-attention:
+
+\begin{equation}
+\text{Attention}(\text{``Lion killed by deer''}) = \text{Attention}(\text{``Deer killed by lion''})
+\end{equation}
+
+**Result**: Model produces IDENTICAL output for OPPOSITE meanings! 
+
+\textbf{Why this happens}:
+\begin{itemize}
+    \item Self-attention computes \(Q \cdot K^T\) between all pairs
+    \item Dot product doesn't care about order (commutative: \(a \cdot b = b \cdot a\))
+    \item Model doesn't distinguish position 1 from position 3
+\end{itemize}
+
+\textbf{Mathematical proof}:
+\begin{equation}
+\text{softmax}(Q K^T) = \text{softmax}((P^T Q)(P^T K)^T) = \text{softmax}(P^T Q K^T P)
+\end{equation}
+
+where \(P\) is any permutation matrix. The model output is **permutation-invariant**!
+
+\subsection{The Solution: Add Position Information}
+
+To solve this, we need to inject position information into the model. But how?
+
+\textbf{Naive Approaches (all FAIL)}:
+
+\textbf{Option 1: Unique integers}
+\begin{equation}
+\text{position} = [1, 2, 3, 4, 5, \ldots, 100, \ldots, 1000000]
+\end{equation}
+
+**Problem**: For billion-token corpus:
+\begin{itemize}
+    \item Position 1000 is 1000x larger than position 1
+    \item High values dominate low values in neural networks
+    \item Model treats position 1 and 1000 completely differently
+    \item No relative meaning (distance of 5 should be same anywhere)
+\end{itemize}
+
+\textbf{Option 2: Normalized positions}
+\begin{equation}
+\text{position\_normalized} = \frac{\text{position}}{\text{max\_position}} = [0.001, 0.002, 0.003, \ldots, 1.0]
+\end{equation}
+
+**Problem**: 
+\begin{itemize}
+    \item Only 1 dimension: loses information about 512-dimensional embedding
+    \item Can't represent rich positional patterns
+\end{itemize}
+
+\textbf{Option 3: One-hot encoding}
+\begin{equation}
+\text{position}_i = [0, 0, \ldots, 1, \ldots, 0] \quad \text{(one 1 at position i)}
+\end{equation}
+
+**Problem**:
+\begin{itemize}
+    \item Requires 100,000+ dimensions for large corpus!
+    \item Wasteful and doesn't scale
+\end{itemize}
+
+\textbf{Option 4: Sin/Cos wavelengths}
+
+\textbf{Eureka!} Use periodic functions at different frequencies:
+
+\begin{equation}
+\text{position\_encoding}(p) = [\sin(\omega_1 p), \cos(\omega_1 p), \sin(\omega_2 p), \cos(\omega_2 p), \ldots]
+\end{equation}
+
+where different frequencies \(\omega_i\) create unique patterns!
+
+\subsection{The Positional Encoding Formula}
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1\textwidth]{second.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+\subsubsection{Complete Mathematical Definition}
+
+For each position \(p = 0, 1, 2, \ldots, 99\) and dimension \(d = 0, 1, \ldots, 511\):
+
+\begin{equation}
+PE(p, 2d) = \sin\left(\frac{p}{10000^{2d/d_{\text{model}}}}\right)
+\end{equation}
+
+\begin{equation}
+PE(p, 2d+1) = \cos\left(\frac{p}{10000^{2d/d_{\text{model}}}}\right)
+\end{equation}
+
+where:
+\begin{itemize}
+    \item \(p\) = position (0 to 99 for 100-word sentence)
+    \item \(d\) = dimension index (0 to 255, since 512/2 = 256)
+    \item \(d_{\text{model}}\) = 512 (total embedding dimension)
+    \item \(10000\) = base frequency (arbitrary but standard)
+\end{itemize}
+
+\subsubsection{Why These Frequencies Work}
+
+\textbf{Key insight}: Different dimensions use **different wavelengths**!
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Dimension} & \textbf{Wavelength} & \textbf{Pattern} \\
+\hline
+\(d=0,1\) (Low) & \(2\pi\) & Completes 1 cycle per ~6.3 positions \\
+\hline
+\(d=2,3\) & \(2\pi \times 2.15\) & Completes 1 cycle per ~13.5 positions \\
+\hline
+\(d=50,51\) (Mid) & \(2\pi \times 1738\) & Slow oscillation \\
+\hline
+\(d=254,255\) (High) & \(2\pi \times 10000\) & Almost linear (very slow) \\
+\hline
+\end{tabular}
+\caption{Wavelengths at Different Dimensions}
+\label{tab:wavelengths}
+\end{table}
+
+**Result**: Each position gets a **unique combination** of these patterns!
+
+\subsection{Concrete Example: Position 5 in 512 Dimensions}
+
+\textbf{Calculate positional encoding for position 5}:
+
+\textbf{Dimension 0 (Even)}: \(PE(5, 0) = \sin\left(\frac{5}{10000^{0/512}}\right)\)
+\begin{align}
+&= \sin\left(\frac{5}{10000^0}\right) \\
+&= \sin\left(\frac{5}{1}\right) \\
+&= \sin(5) \\
+&\approx -0.9589
+\end{align}
+
+\textbf{Dimension 1 (Odd)}: \(PE(5, 1) = \cos\left(\frac{5}{10000^{(1-1)/512}}\right)\)
+\begin{align}
+&= \cos(5) \\
+&\approx 0.2837
+\end{align}
+
+\textbf{Dimension 2 (Even)}: \(PE(5, 2) = \sin\left(\frac{5}{10000^{2/512}}\right)\)
+\begin{align}
+&= \sin\left(\frac{5}{10000^{0.00391}}\right) \\
+&= \sin\left(\frac{5}{2.15}\right) \\
+&= \sin(2.32) \\
+&\approx 0.7457
+\end{align}
+
+\textbf{Dimension 128 (Mid-range)}: \(PE(5, 128) = \sin\left(\frac{5}{10000^{128/512}}\right)\)
+\begin{align}
+&= \sin\left(\frac{5}{10000^{0.25}}\right) \\
+&= \sin\left(\frac{5}{10}\right) \\
+&= \sin(0.5) \\
+&\approx 0.4794
+\end{align}
+
+\textbf{Dimension 510 (High)}: \(PE(5, 510) = \sin\left(\frac{5}{10000^{510/512}}\right)\)
+\begin{align}
+&= \sin\left(\frac{5}{10000^{0.9961}}\right) \\
+&= \sin\left(\frac{5}{9950.2}\right) \\
+&= \sin(0.000502) \\
+&\approx 0.000502 \quad \text{(almost linear!)}
+\end{align}
+
+\textbf{Result}: Position 5 gets a vector like:
+\begin{equation}
+PE(5) = [-0.9589, 0.2837, 0.7457, 0.6615, \ldots, 0.000502, 0.9999]
+\end{equation}
+
+\textbf{Each position gets a completely unique combination!}
+
+\subsection{Why Sin/Cos Encoding Works (Despite Repeating)}
+
+\textbf{Key insight your intuition captured}: Sin/Cos repeat in \([-1, 1]\)!
+
+**BUT**: Different dimensions repeat at **different rates**:
+
+\begin{verbatim}
+Position:  0    1    2    3    4    5    6    7    8    9   ...
+Dim 0:   [ 0.0, 0.84, 0.91, 0.14,-0.76,-0.96,-0.28, 0.66, 0.99, 0.41, ...]  (repeats ~6)
+Dim 1:   [ 1.0, 0.54,-0.42,-1.0, -0.65, 0.28, 1.0,  0.54,-0.42,-1.0,  ...]  (repeats 4)
+Dim 2:   [ 0.0, 0.46, 0.09,-0.09,-0.46, 0.75, 1.0,  0.99, 0.77, 0.43, ...]  (repeats 14)
+Dim 3:   [ 1.0, 0.89, 0.99, 0.99, 0.89, 0.66, 0.0, -0.66,-0.89,-0.99, ...]  (repeats 14)
+...
+Dim 500: [ 0.0, 0.99, 1.0, 1.0,  0.99, 0.99, 0.98, 0.98, 0.97, 0.97, ...]  (repeats 627)
+Dim 501: [ 1.0, 0.05,-0.04,-0.07,-0.10,-0.13,-0.16,-0.19,-0.22,-0.24, ...]  (almost linear)
+\end{verbatim}
+
+**Magic**: 
+- Dimension 0 repeats every ~6 positions
+- Dimension 1 repeats every ~4 positions
+- Dimension 500 repeats every 627 positions
+- LCM(all periods) >> max sequence length!
+
+**Result**: Unique pattern for every position! Even if dimension repeats, the **combination** across all 512 dimensions is unique.
+
+\subsection{The Addition Step (Your Concern About Accuracy)}
+
+\subsubsection{Your Question About Embedding Accuracy}
+
+\textbf{Your concern}: ``If we add position encoding, doesn't it corrupt embedding like changing rabbit's power from 0.1 to 0.9?''
+
+\textbf{Answer}: **NO! Here's why**:
+
+\textbf{Step 1: Position Encoding is NOT Learned}
+
+\begin{lstlisting}[language=Python]
+# Embedding (LEARNED via backprop):
+embedding.weight[1523] = [0.82, -0.34, 0.56, ...]
+# Updated during training based on task!
+
+# Position Encoding (FIXED, pre-computed):
+PE[5] = [sin(5), cos(5), sin(5/2.15), ...]
+# NEVER changes, just mathematical formula!
+\end{lstlisting}
+
+**Consequence**: Position encoding is a **deterministic signal**, not a learnable parameter.
+
+\textbf{Step 2: Neural Networks Separate Mixed Signals}
+
+In high-dimensional spaces, neural networks can decompose information:
+
+\begin{equation}
+x_{\text{combined}} = x_{\text{semantic}} + x_{\text{position}}
+\end{equation}
+
+The model learns:
+\begin{itemize}
+    \item Layer 1: Which dimensions carry semantic info (from embedding)
+    \item Layer 1: Which dimensions carry positional info (from PE)
+    \item Layer 2+: Recombine both types of information
+\end{itemize}
+
+\textbf{Step 3: Superposition in Neural Networks}
+
+Just like radio receivers can extract individual broadcasts from a mixed signal:
+
+\begin{equation}
+\text{signal}_{\text{mixed}} = \text{broadcast}_1 + \text{broadcast}_2 + \text{broadcast}_3
+\end{equation}
+
+A tuned receiver extracts each broadcast independently. Similarly, neural networks extract:
+
+\begin{equation}
+f(\text{embedding} + PE) \approx f(\text{embedding}) + f(PE)
+\end{equation}
+
+in the linear regime, then combine non-linearly.
+
+\textbf{Result}: **Embedding accuracy is preserved**, not corrupted!
+
+\textbf{Mathematical proof of reversibility}:
+
+\begin{equation}
+x + y = z \implies x = z - y \quad \text{(Addition is reversible!)}
+\end{equation}
+
+Since the network can internally subtract PE (which it knows), embeddings are recoverable.
+
+\subsubsection{Why Addition Works (Not Concatenation)}
+
+\textbf{Concatenation would be wasteful}:
+
+\begin{lstlisting}[language=Python]
+# BAD approach (concatenation):
+embedding = [512 dims of semantics]
+position = [512 dims of position]
+concatenated = [512+512 = 1024 dims]  ← DOUBLE parameters!
+
+# Model might ignore position entirely
+# Or lose semantic information to make room for position
+# Inefficient!
+\end{lstlisting}
+
+\textbf{Addition forces integration}:
+
+\begin{lstlisting}[language=Python]
+# GOOD approach (addition):
+embedding = [512 dims]
+position = [512 dims]
+added = [512 dims]  ← SAME dimension!
+
+# Model MUST use position info (can't ignore it)
+# All dimensions carry mixed information
+# Efficient and effective!
+\end{lstlisting}
+
+\subsection{Complete PyTorch Implementation}
+
+\begin{lstlisting}[language=Python]
+import torch
+import torch.nn as nn
+import math
+
+class PositionalEncoding(nn.Module):
+    """
+    Positional Encoding from 'Attention Is All You Need'
+    (Vaswani et al., 2017)
+    """
+    def __init__(self, d_model=512, max_seq_length=5000):
+        super().__init__()
+        
+        # Create PE matrix
+        pe = torch.zeros(max_seq_length, d_model)
+        position = torch.arange(0, max_seq_length).unsqueeze(1).float()
+        
+        # Compute division term: 10000^(2i/d_model)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * 
+            -(math.log(10000.0) / d_model)
+        )
+        
+        # Apply sin to even indices
+        pe[:, 0::2] = torch.sin(position * div_term)
+        
+        # Apply cos to odd indices
+        pe[:, 1::2] = torch.cos(position * div_term)
+        
+        # Register as buffer (not a parameter)
+        self.register_buffer('pe', pe.unsqueeze(0))
+        
+    def forward(self, x):
+        """
+        Args:
+            x: (batch, seq_len, d_model)
+        Returns:
+            x + PE: (batch, seq_len, d_model)
+        """
+        seq_len = x.shape[1]
+        return x + self.pe[:, :seq_len, :]
+
+
+# ============================================================
+# USAGE EXAMPLE
+# ============================================================
+
+vocab_size = 50000
+d_model = 512
+max_seq_length = 5000
+
+# Create embedding and positional encoding layers
+embedding = nn.Embedding(vocab_size, d_model)
+positional_encoding = PositionalEncoding(d_model, max_seq_length)
+
+# Input: ["money", "bank", "grows"]
+token_ids = torch.tensor([1523, 2891, 4562]).unsqueeze(0)  # (1, 3)
+print(f"Token IDs shape: {token_ids.shape}")  # (1, 3)
+
+# Step 1: Get embeddings
+embeddings = embedding(token_ids)  # (1, 3, 512)
+print(f"Embeddings shape: {embeddings.shape}")
+print(f"Embedding for 'money' (first 10 dims): {embeddings[0, 0, :10]}")
+
+# Step 2: Add positional encoding
+output = positional_encoding(embeddings)  # (1, 3, 512)
+print(f"Output shape (after PE): {output.shape}")
+print(f"Output for 'money' (first 10 dims): {output[0, 0, :10]}")
+
+# Difference shows PE was added:
+pe_values = output[0] - embeddings[0]
+print(f"PE for position 0 (first 10 dims): {pe_values[0, :10]}")
+print(f"PE for position 1 (first 10 dims): {pe_values[1, :10]}")
+print(f"PE for position 2 (first 10 dims): {pe_values[2, :10]}")
+# Different positions have different PE values!
+\end{lstlisting}
+
+\subsection{Why This Formula Prevents Position Scaling Issues}
+
+\textbf{Your earlier concern}: Unique numbers \(1, 2, 3, \ldots, 1000000\) fail because high values dominate.
+
+\textbf{Sin/Cos solution}:
+
+\begin{equation}
+-1 \leq \sin(x) \leq 1
+\end{equation}
+\begin{equation}
+-1 \leq \cos(x) \leq 1
+\end{equation}
+
+**All values stay bounded** in \([-1, 1]\), regardless of position! No scaling issues.
+
+\textbf{Comparison}:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Approach} & \textbf{pos=1} & \textbf{pos=1000} & \textbf{pos=1000000} \\
+\hline
+Unique integers & 1 & 1000 & 1000000 & (huge!)  \\
+\hline
+Sin/Cos & 0.84 & -0.51 & -0.68 & (bounded) \\
+\hline
+\end{tabular}
+\caption{How Sin/Cos Keeps Values Bounded}
+\label{tab:bounding}
+\end{table}
+
+\subsection{The Full Encoding Matrix}
+
+For a sentence with 3 words and d=512:
+
+\begin{verbatim}
+Embeddings + PE:
+
+Word 0 ("money"):     [e0 + PE(0,0),  e0 + PE(0,1),  ..., e0 + PE(0,511)]
+Word 1 ("bank"):      [e1 + PE(1,0),  e1 + PE(1,1),  ..., e1 + PE(1,511)]
+Word 2 ("grows"):     [e2 + PE(2,0),  e2 + PE(2,1),  ..., e2 + PE(2,511)]
+
+Shape: (3, 512)
+All information (semantic + positional) in ONE matrix!
+\end{verbatim}
+
+\subsection{Comparison with RoPE (Modern Alternative)}
+
+\textbf{This section uses classic PE from ``Attention Is All You Need'' (2017).}
+
+\textbf{Modern improvement: Rotary Position Embedding (RoPE, 2021):}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{5cm}|p{5cm}|}
+\hline
+\textbf{Aspect} & \textbf{Additive PE (Classic)} & \textbf{RoPE (Modern)} \\
+\hline
+Method & Add PE to embedding & Rotate Q,K vectors \\
+\hline
+Position Type & Absolute & Relative (better!) \\
+\hline
+Extrapolation & Fails beyond training length & Works on any length \\
+\hline
+Used In & BERT, GPT-2 & LLaMA, GPT-4, Mistral \\
+\hline
+\end{tabular}
+\caption{Additive PE vs RoPE}
+\label{tab:pe_comparison}
+\end{table}
+
+For production models, **RoPE is preferred**, but understanding classic PE is foundational!
+
+\subsection{Summary: How Positional Encoding Solves the Problem}
+
+\begin{enumerate}
+    \item \textbf{Problem}: Self-attention is permutation-invariant (``Lion kills deer'' = ``Deer kills lion'')
+    
+    \item \textbf{Solution}: Inject position information via periodic functions
+    
+    \item \textbf{Design}: Different frequencies for different dimensions create unique patterns
+    
+    \item \textbf{Addition}: Combine with embeddings without wasting dimensions
+    
+    \item \textbf{Preservation}: Embeddings NOT corrupted; neural network learns to separate signals
+    
+    \item \textbf{Scaling}: Bounded values \([-1, 1]\) prevent domination of high positions
+    
+    \item \textbf{Result}: Model understands both WHAT (embedding) and WHERE (position)!
+\end{enumerate}
+
+\begin{equation}
+\boxed{\text{Final Representation} = \underbrace{\text{Embedding}}_{\text{semantic}} + \underbrace{\text{PE}}_{\text{positional}}}
+\end{equation}
+
+This enables transformers to process sequences correctly while maintaining parallel attention computation!
+% ============================================================
+\section{Multi-Head Attention}
+\label{sec:multihead_attention}
+% ============================================================
+
+\subsection{Why Single-Head Attention Fails}
+
+\textbf{The Fundamental Problem}: A single attention head can only learn \textbf{one attention pattern}.
+
+\textbf{Example - The Ambiguous Sentence}:
+\begin{center}
+\textit{``The man saw the astronomer with a telescope''}
+\end{center}
+
+This sentence has \textbf{two valid interpretations}:
+
+\begin{enumerate}
+    \item \textbf{Interpretation 1}: The man used a telescope to see the astronomer
+    \begin{equation}
+    \text{``saw''} \xleftarrow{\text{instrument}} \text{``telescope''}
+    \end{equation}
+    
+    \item \textbf{Interpretation 2}: The astronomer possesses a telescope
+    \begin{equation}
+    \text{``astronomer''} \xleftarrow{\text{possession}} \text{``telescope''}
+    \end{equation}
+\end{enumerate}
+
+\textbf{Single-Head Limitation}:
+\begin{equation}
+\text{Attention weights} = \begin{bmatrix}
+\text{``saw''} \rightarrow \text{``telescope''}: & 0.7 \\
+\text{``astronomer''} \rightarrow \text{``telescope''}: & 0.3
+\end{bmatrix}
+\end{equation}
+
+The single head is \textbf{forced to choose} one dominant pattern. It cannot strongly represent \textbf{both relationships simultaneously}!
+
+\textbf{Real-World Failures}:
+\begin{itemize}
+    \item \textbf{``Bank'' disambiguation}: Cannot simultaneously capture financial + geographical contexts
+    \item \textbf{Syntax vs Semantics}: Cannot attend to grammatical structure AND semantic meaning together
+    \item \textbf{Long-range + Local}: Cannot focus on distant words AND nearby context at once
+\end{itemize}
+
+\subsection{The Multi-Head Solution}
+
+\textbf{Key Idea}: Run attention \textbf{multiple times in parallel} with different learned parameters. Each head specializes in different linguistic phenomena.
+
+\textbf{Mathematical Definition}:
+\begin{equation}
+\boxed{\text{MultiHead}(Q, K, V) = \text{Concat}(\text{head}_1, \ldots, \text{head}_h) W^O}
+\end{equation}
+
+where each head is computed as:
+\begin{equation}
+\text{head}_i = \text{Attention}(Q W_i^Q, K W_i^K, V W_i^V)
+\end{equation}
+
+\subsection{Why Multi-Head Works: The Telescope Example}
+
+With \textbf{8 heads}, different heads learn different patterns:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{8cm}|}
+\hline
+\textbf{Head} & \textbf{Attention Pattern Learned} \\
+\hline
+Head 1 & Syntactic (Who does what): ``man'' $\leftarrow$ 0.8 $\rightarrow$ ``saw'' \\
+\hline
+Head 2 & Instrument: ``saw'' $\leftarrow$ 0.9 $\rightarrow$ ``telescope'' \\
+\hline
+Head 3 & Possession: ``astronomer'' $\leftarrow$ 0.85 $\rightarrow$ ``telescope'' \\
+\hline
+Head 4 & Object-subject: ``astronomer'' $\leftarrow$ 0.7 $\rightarrow$ ``man'' \\
+\hline
+Head 5 & Preposition: ``with'' $\leftarrow$ 0.8 $\rightarrow$ ``telescope'' \\
+\hline
+Head 6 & Long-range: Connects sentence start $\leftrightarrow$ end \\
+\hline
+Head 7 & Local context: Adjacent word relationships \\
+\hline
+Head 8 & Punctuation and special tokens \\
+\hline
+\end{tabular}
+\caption{Specialization of Different Attention Heads}
+\label{tab:head_specialization}
+\end{table}
+
+\textbf{Result}: Each head captures \textbf{complementary information}. Combined output contains:
+\begin{itemize}
+    \item \textbf{Both} interpretations of the telescope sentence
+    \item Syntactic structure \textbf{AND} semantic relationships
+    \item Local context \textbf{AND} long-range dependencies
+\end{itemize}
+
+\subsection{Architecture Details}
+
+\textbf{Configuration} (standard Transformer):
+\begin{itemize}
+    \item Number of heads: \(h = 8\)
+    \item Model dimension: \(d_{\text{model}} = 512\)
+    \item Dimension per head: \(d_k = d_{\text{model}} / h = 512 / 8 = 64\)
+\end{itemize}
+
+\textbf{Step-by-Step Computation}:
+
+\textbf{Step 1: Linear Projections (All Heads)}
+
+For input \(X \in \mathbb{R}^{n \times 512}\):
+
+\begin{align}
+Q &= X W^Q \in \mathbb{R}^{n \times 512} \\
+K &= X W^K \in \mathbb{R}^{n \times 512} \\
+V &= X W^V \in \mathbb{R}^{n \times 512}
+\end{align}
+
+where \(W^Q, W^K, W^V \in \mathbb{R}^{512 \times 512}\)
+
+\textbf{Step 2: Split into Heads}
+
+Reshape \(Q, K, V\) to separate heads:
+
+\begin{equation}
+Q \rightarrow Q' \in \mathbb{R}^{n \times 8 \times 64}
+\end{equation}
+
+Each head gets its own 64-dimensional subspace.
+
+\textbf{Step 3: Attention per Head (Parallel)}
+
+For each head \(i = 1, \ldots, 8\):
+
+\begin{equation}
+\text{head}_i = \text{softmax}\left(\frac{Q_i K_i^T}{\sqrt{64}}\right) V_i \in \mathbb{R}^{n \times 64}
+\end{equation}
+
+\textbf{Step 4: Concatenate Heads}
+
+\begin{equation}
+\text{Concat}(\text{head}_1, \ldots, \text{head}_8) \in \mathbb{R}^{n \times 512}
+\end{equation}
+
+where \(8 \times 64 = 512\) dimensions.
+
+\textbf{Step 5: Output Projection}
+
+\begin{equation}
+\text{Output} = \text{Concat}(\text{heads}) W^O \in \mathbb{R}^{n \times 512}
+\end{equation}
+
+where \(W^O \in \mathbb{R}^{512 \times 512}\) mixes information across heads.
+
+\subsection{Concrete Example: ``Money Bank Grows''}
+
+\textbf{Input}: [``money'', ``bank'', ``grows''] with embeddings \(X \in \mathbb{R}^{3 \times 512}\)
+
+\textbf{Single-Head Output} (limited):
+\begin{equation}
+\text{bank}_{\text{single}} = 0.35 \cdot v_{\text{money}} + 0.42 \cdot v_{\text{bank}} + 0.23 \cdot v_{\text{grows}}
+\end{equation}
+
+Captures only \textbf{one aspect} (e.g., financial context).
+
+\textbf{Multi-Head Output} (8 heads):
+
+\begin{align}
+\text{Head 1:} \quad & \text{bank}_1 = 0.8 \cdot v_{\text{money}} + 0.1 \cdot v_{\text{bank}} + 0.1 \cdot v_{\text{grows}} \\
+& \text{(Focus: financial relationship with money)} \\
+\text{Head 2:} \quad & \text{bank}_2 = 0.2 \cdot v_{\text{money}} + 0.5 \cdot v_{\text{bank}} + 0.3 \cdot v_{\text{grows}} \\
+& \text{(Focus: growth/action semantics)} \\
+\text{Head 3:} \quad & \text{bank}_3 = 0.1 \cdot v_{\text{money}} + 0.2 \cdot v_{\text{bank}} + 0.7 \cdot v_{\text{grows}} \\
+& \text{(Focus: verb-noun relation)} \\
+& \vdots \\
+\text{Head 8:} \quad & \text{bank}_8 = 0.4 \cdot v_{\text{money}} + 0.4 \cdot v_{\text{bank}} + 0.2 \cdot v_{\text{grows}} \\
+& \text{(Focus: positional encoding)}
+\end{align}
+
+\textbf{Final representation}:
+\begin{equation}
+\text{bank}_{\text{multi}} = W^O \cdot [\text{bank}_1 | \text{bank}_2 | \cdots | \text{bank}_8] \in \mathbb{R}^{512}
+\end{equation}
+
+This captures \textbf{all 8 perspectives simultaneously}!
+
+\subsection{Matrix Dimensions Breakdown}
+
+\begin{verbatim}
+Input X:              (3, 512)   [3 words, 512 features]
+     |
+     v
+W_Q projection:       (512, 512) [learned parameters]
+Q = X @ W_Q:          (3, 512)
+     |
+     v
+Reshape to heads:     (3, 8, 64) [3 words, 8 heads, 64 dims each]
+     |
+     v
+Attention per head:   Each head processes independently
+  Head 1: (3, 64)
+  Head 2: (3, 64)
+  ...
+  Head 8: (3, 64)
+     |
+     v
+Concatenate:          (3, 512)   [8 * 64 = 512]
+     |
+     v
+W_O projection:       (512, 512) [mix information across heads]
+     |
+     v
+Final output:         (3, 512)   [same shape as input!]
+\end{verbatim}
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1\textwidth]{multihead1.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1\textwidth]{multihead2.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+
+\subsection{Complete PyTorch Implementation}
+
+\begin{lstlisting}[language=Python]
+import torch
+import torch.nn as nn
+import math
+
+class MultiHeadAttention(nn.Module):
+    """
+    Multi-Head Attention as described in 
+    'Attention Is All You Need' (Vaswani et al., 2017)
+    """
+    def __init__(self, d_model=512, num_heads=8):
+        super().__init__()
+        assert d_model % num_heads == 0, \
+               "d_model must be divisible by num_heads"
+        
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_k = d_model // num_heads  # 512 // 8 = 64
+        
+        # Linear projections for Q, K, V (ALL heads at once)
+        self.W_Q = nn.Linear(d_model, d_model, bias=False)
+        self.W_K = nn.Linear(d_model, d_model, bias=False)
+        self.W_V = nn.Linear(d_model, d_model, bias=False)
+        
+        # Output projection (W^O)
+        self.W_O = nn.Linear(d_model, d_model, bias=False)
+        
+    def split_heads(self, x):
+        """
+        Split last dimension into (num_heads, d_k)
+        Input:  (batch, seq_len, d_model)
+        Output: (batch, num_heads, seq_len, d_k)
+        """
+        batch_size, seq_len, d_model = x.size()
+        x = x.view(batch_size, seq_len, 
+                   self.num_heads, self.d_k)
+        return x.transpose(1, 2)
+    
+    def combine_heads(self, x):
+        """
+        Inverse of split_heads
+        Input:  (batch, num_heads, seq_len, d_k)
+        Output: (batch, seq_len, d_model)
+        """
+        batch_size, num_heads, seq_len, d_k = x.size()
+        x = x.transpose(1, 2).contiguous()
+        return x.view(batch_size, seq_len, self.d_model)
+    
+    def attention(self, Q, K, V):
+        """
+        Scaled dot-product attention
+        Q, K, V: (batch, num_heads, seq_len, d_k)
+        """
+        # Compute scores
+        scores = torch.matmul(Q, K.transpose(-2, -1))
+        scores = scores / math.sqrt(self.d_k)
+        
+        # Apply softmax
+        attn_weights = torch.softmax(scores, dim=-1)
+        
+        # Weighted sum of values
+        output = torch.matmul(attn_weights, V)
+        
+        return output, attn_weights
+    
+    def forward(self, X):
+        """
+        X: (batch, seq_len, d_model)
+        Returns: output, attention_weights
+        """
+        # 1. Linear projections
+        Q = self.W_Q(X)  # (batch, seq_len, 512)
+        K = self.W_K(X)
+        V = self.W_V(X)
+        
+        # 2. Split into heads
+        Q = self.split_heads(Q)  # (batch, 8, seq_len, 64)
+        K = self.split_heads(K)
+        V = self.split_heads(V)
+        
+        # 3. Apply attention (parallel for all heads)
+        attn_output, attn_weights = self.attention(Q, K, V)
+        
+        # 4. Concatenate heads
+        concat_output = self.combine_heads(attn_output)
+        # (batch, seq_len, 512)
+        
+        # 5. Final projection
+        output = self.W_O(concat_output)
+        
+        return output, attn_weights
+
+# ============================================================
+# USAGE EXAMPLE
+# ============================================================
+
+# Input: ["money", "bank", "grows"]
+embedding_layer = nn.Embedding(50000, 512)
+token_ids = torch.tensor([1523, 2891, 4562])
+X = embedding_layer(token_ids).unsqueeze(0)
+# X: (1, 3, 512)
+
+# Create multi-head attention
+mha = MultiHeadAttention(d_model=512, num_heads=8)
+
+# Forward pass
+output, attention_weights = mha(X)
+
+print(f"Input shape:  {X.shape}")
+# torch.Size([1, 3, 512])
+
+print(f"Output shape: {output.shape}")
+# torch.Size([1, 3, 512])
+
+print(f"Attention weights shape: {attention_weights.shape}")
+# torch.Size([1, 8, 3, 3])
+# [batch, num_heads, seq_len, seq_len]
+
+# Visualize each head's attention pattern
+for head_idx in range(8):
+    print(f"\nHead {head_idx + 1} attention:")
+    print(attention_weights[0, head_idx])
+    # Different pattern for each head!
+\end{lstlisting}
+
+\subsection{Key Advantages of Multi-Head Attention}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{5cm}|p{5cm}|}
+\hline
+\textbf{Aspect} & \textbf{Single Head} & \textbf{Multi-Head (8)} \\
+\hline
+Expressive Power & 1 attention pattern & 8 different patterns \\
+\hline
+Ambiguity Handling & Must choose one interpretation & Captures multiple simultaneously \\
+\hline
+Linguistic Phenomena & Cannot separate syntax/semantics & Each head specializes \\
+\hline
+Telescope Example & Must choose: saw-with OR astronomer-with & Head 1: saw-with, Head 2: astronomer-with ✅ \\
+\hline
+Computational Cost & Lower & Higher but parallelizable on GPUs \\
+\hline
+\end{tabular}
+\caption{Comparison: Single-Head vs Multi-Head Attention}
+\label{tab:single_vs_multi}
+\end{table}
+
+\subsection{Why Exactly 8 Heads?}
+
+\textbf{Common configurations}:
+\begin{itemize}
+    \item \textbf{BERT-base}: 12 heads
+    \item \textbf{GPT-2}: 12 heads
+    \item \textbf{GPT-3}: 96 heads!
+    \item \textbf{LLaMA-2}: 32 heads
+\end{itemize}
+
+\textbf{Trade-offs}:
+\begin{itemize}
+    \item \textbf{More heads}: More expressive, but more parameters and computation
+    \item \textbf{Fewer heads}: Faster, but less expressive
+    \item \textbf{8 heads}: Good balance for most tasks
+\end{itemize}
+
+The number 8 comes from:
+\begin{equation}
+d_k = \frac{d_{\text{model}}}{\text{num\_heads}} = \frac{512}{8} = 64
+\end{equation}
+
+64 dimensions per head is empirically found to work well (not too small, not too large).
+
+\subsection{Information Flow Visualization}
+
+\begin{verbatim}
+SINGLE-HEAD ATTENTION:
+Input → W_Q, W_K, W_V → Attention → Output
+         (One perspective only)
+
+MULTI-HEAD ATTENTION:
+                    → Head 1 (syntax) →
+                   ↗ Head 2 (semantics) ↘
+                  ↗  Head 3 (long-range) ↘
+Input → W_Q, W_K, W_V → Head 4 (local) → Concat → W^O → Output
+                  ↖  Head 5 (position) ↗
+                   ↖ Head 6 (entities) ↗
+                    ↖ Head 7 (coreference)
+                     ↖ Head 8 (special)
+         
+         (8 complementary perspectives combined!)
+\end{verbatim}
+
+\subsection{Summary}
+
+\textbf{Multi-Head Attention solves the fundamental limitation}:
+\begin{itemize}
+    \item Single head $\rightarrow$ single attention pattern $\rightarrow$ cannot capture multiple relationships
+    \item Multiple heads $\rightarrow$ multiple patterns $\rightarrow$ captures complementary information
+    \item Each head specializes in different linguistic phenomena
+    \item Combined representation is much richer than single-head
+\end{itemize}
+
+\textbf{Mathematical essence}:
+\begin{equation}
+\text{Rich representation} = \text{Combine}[\underbrace{\text{syntax}, \text{semantics}, \text{position}, \ldots}_{\text{8 different heads}}]
+\end{equation}
+
+This is why \textbf{all modern transformers} (BERT, GPT, LLaMA) use multi-head attention!
+
+% ============================================================
+\section{Normalization in Deep Learning}
+% ============================================================
+
+\subsection{Batch Normalization}
+
+\subsubsection{Introduction and Motivation}
+
+Batch Normalization (BN) is a core technique in deep learning used to stabilize and accelerate training by normalizing the intermediate activations within each layer.
+
+While traditional normalization techniques like StandardScaler or MinMaxScaler normalize raw input data, Batch Normalization operates \textbf{inside the network} on the activations (pre-activation outputs) of each neuron within a mini-batch.
+
+During training, as weights update, the distribution of activations inside the network keeps changing—a problem known as \textbf{internal covariate shift}. BN addresses this by ensuring stable mean and variance of activations, making training more robust.
+
+\textbf{Benefits of Batch Normalization}:
+\begin{itemize}
+    \item \textbf{Improved Training Stability}: Prevents exploding or vanishing gradients
+    \item \textbf{Faster Convergence}: Allows higher learning rates and stable optimization
+    \item \textbf{Reduced Internal Covariate Shift}: Keeps feature distributions consistent
+    \item \textbf{Regularization Effect}: Adds mini-batch noise, reducing overfitting
+\end{itemize}
+
+\subsubsection{Mathematical Formulation}
+
+Let a layer produce activations for a mini-batch:
+\[
+x_1, x_2, \ldots, x_m
+\]
+where \(m\) is the batch size.
+
+\textbf{Step 1: Compute Batch Statistics}
+\begin{align}
+\mu_B &= \frac{1}{m}\sum_{i=1}^{m} x_i \quad &&\text{(Batch Mean)} \\
+\sigma_B^2 &= \frac{1}{m}\sum_{i=1}^{m}(x_i - \mu_B)^2 \quad &&\text{(Batch Variance)}
+\end{align}
+
+\textbf{Step 2: Normalize Activations}
+\[
+\hat{x}_i = \frac{x_i - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}}
+\]
+Here, \(\epsilon\) is a small constant (typically \(10^{-5}\)) added to prevent division by zero.
+
+After normalization:
+\[
+E[\hat{x}_i] = 0, \quad \text{Var}[\hat{x}_i] = 1
+\]
+
+\textbf{Step 3: Scale and Shift (Learnable Parameters)}
+
+To preserve representational flexibility, BN introduces two learnable parameters:
+\[
+y_i = \gamma \hat{x}_i + \beta
+\]
+where:
+\begin{itemize}
+    \item \(\gamma\): learnable \textbf{scale factor}
+    \item \(\beta\): learnable \textbf{shift factor}
+\end{itemize}
+
+\textbf{Complete Batch Normalization Formula}:
+\[
+\boxed{
+y_i = \gamma \left( \frac{x_i - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}} \right) + \beta
+}
+\]
+
+\textbf{Step 4: Placement in Neural Networks}
+
+BN is typically applied \textbf{before the activation function}:
+\[
+z = W x + b, \quad \tilde{z} = \text{BatchNorm}(z), \quad a = f(\tilde{z})
+\]
+
+\subsubsection{Numerical Example: Single Neuron}
+
+Suppose a neuron outputs activations in one mini-batch:
+\[
+x = [7,\, 2,\, 5,\, 4]
+\]
+
+\textbf{Step 1: Compute Statistics}
+\[
+\mu_B = \frac{7+2+5+4}{4} = 4.5
+\]
+\[
+\sigma_B^2 = \frac{(7-4.5)^2+(2-4.5)^2+(5-4.5)^2+(4-4.5)^2}{4} = 3.25
+\]
+
+\textbf{Step 2: Normalize}
+\[
+\hat{x} = \frac{x - 4.5}{\sqrt{3.25 + 10^{-5}}} = [1.39,\, -1.39,\, 0.28,\, -0.28]
+\]
+
+\textbf{Step 3: Apply Learnable Parameters}
+
+Assume \(\gamma = 0.5, \beta = 0.1\)
+\[
+y = 0.5\hat{x} + 0.1 = [0.795, -0.595, 0.24, -0.04]
+\]
+
+\subsubsection{Detailed Network Example}
+
+\textbf{Network Structure}:
+\begin{itemize}
+    \item Inputs: \(f_1, f_2\)
+    \item Hidden Neurons: \(z_1, z_2, z_3\)
+    \item Output: 1 neuron
+    \item Batch Size: 5
+\end{itemize}
+
+Each neuron computes:
+\[
+z_j = w_{1j} f_1 + w_{2j} f_2 + b_j
+\]
+
+\textbf{Pre-Activation Values}:
+\begin{table}[H]
+\centering
+\begin{tabular}{cccccc}
+\toprule
+Sample & \(f_1\) & \(f_2\) & \(z_1\) & \(z_2\) & \(z_3\) \\
+\midrule
+1 & 2 & 3 & 7 & 5 & 4 \\
+2 & 1 & 1 & 2 & 3 & 4 \\
+3 & 5 & 4 & 1 & 2 & 3 \\
+4 & 6 & 1 & 7 & 5 & 6 \\
+5 & 7 & 1 & 3 & 3 & 4 \\
+\bottomrule
+\end{tabular}
+\caption{Inputs and pre-activation values across 5 samples}
+\end{table}
+
+\textbf{Step 1: Compute Batch Statistics}
+
+For Neuron 1:
+\[
+\mu_1 = 4, \quad \sigma_1^2 = 6.4, \quad \sigma_1 = 2.53
+\]
+
+For Neuron 2:
+\[
+\mu_2 = 3.6, \quad \sigma_2^2 = 1.04, \quad \sigma_2 = 1.02
+\]
+
+For Neuron 3:
+\[
+\mu_3 = 4.2, \quad \sigma_3^2 = 0.96, \quad \sigma_3 = 0.98
+\]
+
+\textbf{Step 2: Normalize Each Neuron}
+\[
+\hat{z}_1 = [1.18, -0.79, -1.18, 1.18, -0.39]
+\]
+\[
+\hat{z}_2 = [1.37, -0.59, -1.57, 1.37, -0.59]
+\]
+\[
+\hat{z}_3 = [-0.20, -0.20, -1.22, 1.83, -0.20]
+\]
+
+\textbf{Step 3: Apply Learnable Parameters}
+
+For each neuron:
+\[
+y_{ji} = \gamma_j \hat{z}_{ji} + \beta_j
+\]
+
+Assuming \(\gamma_j = 1, \beta_j = 0\), we have \(y_j = \hat{z}_j\).
+
+\textbf{Step 4: Pass to Activation Function}
+
+After normalization and scaling:
+\[
+a_{ji} = f(y_{ji})
+\]
+where \(f\) could be ReLU, tanh, or sigmoid.
+
+BN is applied \textbf{before activation}:
+\[
+x \xrightarrow{W,b} z \xrightarrow{\text{BatchNorm}} y \xrightarrow{f()} a
+\]
+
+\textbf{Summary of Normalized Outputs}:
+\begin{table}[H]
+\centering
+\begin{tabular}{cccc}
+\toprule
+Sample & \(\hat{z}_1\) & \(\hat{z}_2\) & \(\hat{z}_3\) \\
+\midrule
+1 & 1.18 & 1.37 & -0.20 \\
+2 & -0.79 & -0.59 & -0.20 \\
+3 & -1.18 & -1.57 & -1.22 \\
+4 & 1.18 & 1.37 & 1.83 \\
+5 & -0.39 & -0.59 & -0.20 \\
+\bottomrule
+\end{tabular}
+\caption{Normalized pre-activations after Batch Normalization}
+\end{table}
+
+
+
+\subsubsection{Real-World Analogy}
+
+Imagine each neuron as a student taking several tests (mini-batches). Each test has varying difficulty—some are easy, some hard.
+
+\textbf{Batch Normalization acts like a teacher who}:
+\begin{itemize}
+    \item Subtracts the mean score (centers around zero difficulty)
+    \item Divides by the standard deviation (equalizes the spread)
+    \item Adds a learnable rescale (\(\gamma\)) and shift (\(\beta\))—allowing regrading if needed
+\end{itemize}
+
+This ensures every neuron learns steadily, without one batch overpowering another.
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1\textwidth]{batch1.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\textwidth]{batch2.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1\textwidth]{batch3.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+% ============================================================
+\subsection{Layer Normalization in Transformers}
+% ============================================================
+
+\subsubsection{Why Batch Normalization Fails in Transformers}
+
+While Batch Normalization works well for CNNs, it fails in Transformers and NLP tasks for three critical reasons:
+
+\textbf{1. Variable Sequence Lengths and Padding}
+
+When processing sentences:
+\begin{itemize}
+    \item "Hi Deepak" \(\rightarrow\) 2 tokens
+    \item "How can I help you today" \(\rightarrow\) 6 tokens
+\end{itemize}
+
+Transformers pad sequences to a fixed length (e.g., 10). Some positions contain real tokens, others are \texttt{<PAD>} tokens (typically zeros).
+
+If we apply Batch Normalization:
+\begin{itemize}
+    \item It computes mean/variance \textit{across the batch} (vertically across different sentences)
+    \item Padding zeros dominate the statistics \(\rightarrow\) mean shifts toward 0
+    \item Model receives incorrect normalization statistics
+\end{itemize}
+
+\textbf{Result}: BN fails because statistics become meaningless with variable-length padded sequences.
+
+\textbf{2. Sequential and Autoregressive Processing}
+
+In RNNs and Transformers:
+\begin{itemize}
+    \item Each token is processed independently
+    \item Batch statistics vary across time steps
+\end{itemize}
+
+During inference, batch size might be 1 (single sentence). BN fails because it depends on a batch to estimate mean/variance.
+
+\textbf{3. Small Batch Sizes in NLP}
+
+Transformers often train with batch sizes of 4–8 (due to large memory requirements). BatchNorm's estimation of mean/variance becomes unstable for such small batches.
+
+\textbf{Conclusion}: BatchNorm depends on batch-wide statistics, which breaks when there is padding, variable lengths, small batch sizes, or sequential dependencies.
+
+\subsubsection{Layer Normalization: The Solution}
+
+Instead of computing statistics \textit{across the batch}, Layer Normalization computes \textbf{within each sample (token vector)}—across its feature dimension.
+
+\textbf{Mathematical Definition}
+
+For each sample \(i\), normalize across its feature dimensions:
+\[
+\hat{x}_i = \frac{x_i - \mu_i}{\sqrt{\sigma_i^2 + \epsilon}}
+\]
+where \(\mu_i, \sigma_i^2\) are computed \textbf{across features}, not across the batch.
+
+Then apply learnable parameters:
+\[
+y_i = \gamma \hat{x}_i + \beta
+\]
+
+\textbf{Complete Layer Normalization Formula}:
+\[
+\boxed{
+y_i = \gamma \left( \frac{x_i - \mu_i}{\sqrt{\sigma_i^2 + \epsilon}} \right) + \beta
+}
+\]
+
+\subsubsection{Concrete Example}
+
+Consider two token embeddings (dimension \(d=4\)):
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|c|c|}
+\hline
+Token & Embedding (\(d=4\)) \\
+\hline
+Hi & [0.2, 0.4, 0.6, 0.8] \\
+Deepak & [0.1, 0.3, 0.5, 0.7] \\
+\hline
+\end{tabular}
+\end{table}
+
+For token "Hi":
+\[
+\mu = \frac{0.2 + 0.4 + 0.6 + 0.8}{4} = 0.5
+\]
+\[
+\sigma^2 = \frac{(0.2-0.5)^2+(0.4-0.5)^2+(0.6-0.5)^2+(0.8-0.5)^2}{4}=0.05
+\]
+
+Normalize:
+\[
+\hat{x} = \frac{x - 0.5}{\sqrt{0.05 + \epsilon}} = [-1.34, -0.45, 0.45, 1.34]
+\]
+
+Apply learnable parameters (assume \(\gamma=1, \beta=0\)):
+\[
+y = \gamma \hat{x} + \beta = [-1.34, -0.45, 0.45, 1.34]
+\]
+
+\textbf{Key Advantage}: No dependency on batch size, no problem with padding zeros, and stable across all tokens.
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1\textwidth]{layernorm.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=1\textwidth]{layernorm1.png}
+  \caption{This is an example image}
+  \label{fig:example}
+\end{figure}
+\subsubsection{Layer Normalization in Transformer Architecture}
+
+\textbf{1. Placement in Transformers}
+
+LayerNorm is used:
+\begin{itemize}
+    \item Before and/or after Self-Attention and Feed-Forward blocks
+    \item In Pre-LN and Post-LN architectures
+\end{itemize}
+
+\textbf{Post-LN (original Transformer, Vaswani et al. 2017)}:
+\[
+x = x + \text{Sublayer}(\text{LayerNorm}(x))
+\]
+Problem: gradient instability for deep networks.
+
+\textbf{Pre-LN (used in GPT, BERT, etc.)}:
+\[
+x = x + \text{Sublayer}(\text{LayerNorm}(x))
+\]
+More stable training and better convergence.
+
+\textbf{2. LayerNorm in Multi-Head Self-Attention}
+
+When self-attention outputs a matrix of shape \([\text{batch}, \text{seq\_len}, \text{hidden\_dim}]\), LayerNorm is applied \textbf{independently to each token vector} of size \(\text{hidden\_dim}\).
+
+For each word (e.g., "Hi", "Deepak", "today"), LayerNorm normalizes its embedding features.
+
+\textbf{3. Learnable Parameters}
+
+LayerNorm has learnable \(\gamma\) (scale) and \(\beta\) (shift), like BatchNorm. They have the same shape as the feature dimension:
+\[
+\gamma, \beta \in \mathbb{R}^{d_{\text{model}}}
+\]
+so every feature dimension learns its own rescaling.
+
+\textbf{4. Training vs Inference}
+
+Unlike BatchNorm, LayerNorm uses \textbf{the same mean and variance} at training and inference time (since they are computed per sample). This removes the need for running averages—another reason it's preferred in Transformers.
+
+\subsubsection{Comparison: Batch Normalization vs Layer Normalization}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{5cm}|p{5cm}|}
+\hline
+\textbf{Feature} & \textbf{Batch Normalization} & \textbf{Layer Normalization} \\
+\hline
+Normalizes & Across batch dimension & Across feature dimension \\
+\hline
+Formula & \((\mu, \sigma)\) per feature across batch & \((\mu, \sigma)\) per sample across features \\
+\hline
+Batch size dependency & High & None \\
+\hline
+Padding effect & Strongly affected & Unaffected \\
+\hline
+Used in & CNNs, MLPs & Transformers, RNNs, NLP \\
+\hline
+Learnable params & \(\gamma, \beta\) per feature & \(\gamma, \beta\) per feature dimension \\
+\hline
+Train/Test difference & Yes (uses running averages) & No (same statistics) \\
+\hline
+Typical shape & [Batch, Channels, H, W] & [Batch, Seq, Hidden] \\
+\hline
+\end{tabular}
+\caption{Comparison of Batch Normalization and Layer Normalization}
+\end{table}
+
+\subsubsection{Intuitive Analogy}
+
+\textbf{Batch Normalization} normalizes "across students in a class"—it compares how everyone performed relative to each other.
+
+\textbf{Layer Normalization} normalizes "within a student's own subjects"—making sure their performance is internally balanced, regardless of other students.
+
+\subsubsection{Summary}
+
+\textbf{Batch Normalization}:
+\begin{itemize}
+    \item Normalizes across batch for each feature
+    \item Works well for CNNs with large, fixed-size batches
+    \item Fails in NLP due to variable lengths, padding, and small batches
+\end{itemize}
+
+\textbf{Layer Normalization}:
+\begin{itemize}
+    \item Normalizes across features for each sample
+    \item Stable for any sequence length and batch size
+    \item Consistent between training and inference
+    \item Standard in Transformers (GPT, BERT, LLaMA)
+\end{itemize}
+
+% ============================================================
+\section{Comparison Tables}
+% ============================================================
+
+\subsection{RNN vs Transformer}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{5.5cm}|p{5.5cm}|}
+\hline
+\textbf{Property} & \textbf{RNN/LSTM} & \textbf{Transformer} \\
+\hline
+Processing & Sequential (word-by-word) & Parallel (all words at once) \\
+\hline
+Long-range dependencies & Struggles (vanishing gradients) & Excellent (direct connections) \\
+\hline
+Training speed & Slow (cannot parallelize) & Fast (full GPU utilization) \\
+\hline
+Memory bottleneck & Hidden state compresses everything & Attention to all tokens \\
+\hline
+Gradient flow & Degrades over long sequences & Direct paths via attention \\
+\hline
+Context window & Limited by hidden state size & Limited by quadratic complexity \\
+\hline
+\end{tabular}
+\caption{RNN vs Transformer Architecture Comparison}
+\end{table}
+
+\subsection{Final Summary: Static vs Dynamic}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Aspect} & \textbf{Static Embedding} & \textbf{Dynamic (Self-Attention)} \\
+\hline
+Representation & Fixed vector & Context-dependent vector \\
+\hline
+``bank'' in ``money bank'' & Same as always & Financial institution \\
+\hline
+``bank'' in ``river bank'' & Same as always & Geographical location \\
+\hline
+Training & Pre-trained separately & End-to-end with model \\
+\hline
+Quality & Lower for ambiguous words & Higher, disambiguation \\
+\hline
+Parameters & Fewer (vocabulary only) & More (vocab + W\_Q/K/V) \\
+\hline
+Computation & Fast lookup only & Requires attention computation \\
+\hline
+\end{tabular}
+\caption{Final Comparison: Static vs Dynamic Embeddings}
+\end{table}
+
+
+% ============================================================
+\section{Transformer Encoder Architecture}
+% ============================================================
+
+The Transformer Encoder processes input sequences through 6 identical stacked layers, transforming static embeddings into deeply contextualized representations.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.5\textwidth]{Encoder.png}
+  \caption{Transformer Encoder Architecture with detailed Multi-Head Attention and Feed-Forward Network components}
+  \label{fig:example}
+\end{figure}
+
+% ============================================================
+\subsection{Single Encoder Layer Components}
+% ============================================================
+
+Each encoder layer contains 4 key components executed sequentially.
+
+% ============================================================
+\subsubsection{Component 1: Multi-Head Self-Attention}
+% ============================================================
+
+\textbf{Purpose}: Create contextualized representations where each word understands its relationship with all other words.
+
+\textbf{Input}: 
+\begin{equation}
+X = [x_1, x_2, x_3] \in \mathbb{R}^{3 \times 512}
+\end{equation}
+
+\textbf{Process}:
+\begin{enumerate}
+    \item Project to Q, K, V spaces (8 heads $\times$ 64 dimensions each)
+    \item Compute attention scores
+    \item Apply softmax and weighted sum
+    \item Concatenate heads
+\end{enumerate}
+
+\textbf{Output}: 
+\begin{equation}
+Z = [z_1, z_2, z_3] \in \mathbb{R}^{3 \times 512}
+\end{equation}
+
+\textbf{Why it's needed}: Solves the ``static embedding'' problem -- each word's representation now depends on its context.
+
+\textbf{Mathematical Definition}:
+
+For each head $h$:
+\begin{align}
+Q_h &= X \cdot W^Q_h \in \mathbb{R}^{3 \times 64} \\
+K_h &= X \cdot W^K_h \in \mathbb{R}^{3 \times 64} \\
+V_h &= X \cdot W^V_h \in \mathbb{R}^{3 \times 64} \\
+\text{Attention}(Q_h, K_h, V_h) &= \text{softmax}\left(\frac{Q_h \cdot K_h^T}{\sqrt{64}}\right) \cdot V_h
+\end{align}
+
+\textbf{Complete Multi-Head Attention}:
+\begin{equation}
+\text{MultiHead}(Q,K,V) = \text{Concat}(\text{head}_1, \ldots, \text{head}_8) \cdot W^O
+\end{equation}
+
+\textbf{Concrete Example -- ``How are you''}:
+
+After attention, ``bank'' in ``money bank grows'' receives:
+\begin{itemize}
+    \item 28\% information from ``money'' (financial context)
+    \item 42\% information from itself
+    \item 30\% information from ``grows'' (growth/financial concept)
+\end{itemize}
+
+Result: ``bank'' now knows it's in a financial context!
+
+% ============================================================
+\subsubsection{Component 2: Residual Connections -- The Gradient Highway}
+% ============================================================
+
+\textbf{Mathematical Definition}:
+\begin{equation}
+\text{Output} = \text{LayerNorm}(x + \text{Sublayer}(x))
+\end{equation}
+
+\textbf{Why Residual Connections are Critical}:
+
+\textbf{1. Vanishing Gradient Solution}:
+
+In deep networks:
+\begin{equation}
+\frac{\partial L}{\partial x_{\text{layer1}}} \approx 0 \quad \text{(gradients vanish)}
+\end{equation}
+
+With residuals:
+\begin{equation}
+\frac{\partial (x + f(x))}{\partial x} = 1 + \frac{\partial f}{\partial x}
+\end{equation}
+
+Even if $\frac{\partial f}{\partial x} \approx 0$, gradient flow is preserved through the ``$+1$''!
+
+\textbf{Mathematical Proof}:
+
+Without residuals:
+\begin{equation}
+y = f_6(f_5(f_4(f_3(f_2(f_1(x))))))
+\end{equation}
+
+\begin{equation}
+\frac{\partial L}{\partial x} = \frac{\partial L}{\partial y} \cdot \frac{\partial f_6}{\partial f_5} \cdot \frac{\partial f_5}{\partial f_4} \cdot \ldots \cdot \frac{\partial f_1}{\partial x}
+\end{equation}
+
+If each $\frac{\partial f_i}{\partial x} < 1$, product $\rightarrow 0$ (vanishing!)
+
+With residuals:
+\begin{align}
+\text{Each layer: } y_i &= x_i + f(x_i) \\
+\frac{\partial y_i}{\partial x_i} &= 1 + \frac{\partial f(x_i)}{\partial x_i}
+\end{align}
+
+Gradient always has ``$+1$'' path $\rightarrow$ never vanishes!
+
+\textbf{2. Identity Mapping Learning}:
+
+Network can learn $f(x) = 0$ to preserve original input:
+\begin{equation}
+y = x + f(x) \quad \text{If } f(x) = 0: y = x \quad \text{(identity mapping)}
+\end{equation}
+
+This is \textbf{easy to learn} when optimal (no transformation needed)!
+
+\textbf{3. Training Stability}:
+\begin{itemize}
+    \item Prevents gradient explosion/vanishing in deep stacks (6+ layers)
+    \item Enables training of very deep networks (100+ layers in ResNet)
+\end{itemize}
+
+\textbf{Why Residual Connections?}
+\begin{itemize}
+    \item \textbf{Helps gradient flow}: Direct path through ``$+1$'' term
+    \item \textbf{Prevents information loss}: Original $x$ always preserved
+    \item \textbf{Allows model to learn ``corrections''}: Rather than full transformations
+    \item \textbf{Allows training of deep models}: 6--100+ layers possible
+\end{itemize}
+
+\textbf{Without residuals, the Transformer would not train properly.}
+
+\textbf{Your Example}:
+
+Input to attention: $[x_1, x_2, x_3]$
+
+Attention output: $[z_1, z_2, z_3]$
+
+\textbf{Residual}: $[x_1+z_1, x_2+z_2, x_3+z_3]$
+
+Result: Original information ($x$) + New information ($z$) = \textbf{preserved gradient flow}!
+
+% ============================================================
+\subsubsection{Component 3: Layer Normalization -- Training Stabilizer}
+% ============================================================
+
+\textbf{Purpose}: Normalize activations to have consistent mean (0) and variance (1) across features.
+
+\textbf{Mathematical Definition}:
+
+For each token vector $x \in \mathbb{R}^{512}$:
+
+\begin{align}
+\mu &= \frac{1}{512} \sum_{i=1}^{512} x_i \\
+\sigma &= \sqrt{\frac{1}{512} \sum_{i=1}^{512} (x_i - \mu)^2 + \epsilon} \\
+\text{LayerNorm}(x) &= \gamma \cdot \frac{x - \mu}{\sigma} + \beta
+\end{align}
+
+where:
+\begin{itemize}
+    \item $\mu$: mean across 512 dimensions
+    \item $\sigma$: standard deviation
+    \item $\gamma, \beta \in \mathbb{R}^{512}$: learnable scale and shift parameters
+    \item $\epsilon = 10^{-5}$: prevents division by zero
+\end{itemize}
+
+\textbf{Why After Residual Connection?}:
+\begin{itemize}
+    \item Normalizes the combined signal (original + transformation)
+    \item Prevents extreme values from disrupting training
+    \item Works with any batch size (unlike BatchNorm)
+\end{itemize}
+
+\textbf{Why LayerNorm?}
+\begin{itemize}
+    \item \textbf{Stabilizes training}: Prevents internal covariate shift
+    \item \textbf{Keeps feature distributions consistent}: Mean=0, Var=1
+    \item \textbf{Smoother gradients}: Better optimization landscape
+    \item \textbf{Improves convergence}: Faster training, higher learning rates
+\end{itemize}
+
+\textbf{This is important because attention outputs vary widely.}
+
+\textbf{Concrete Example}:
+
+Token ``How'' after residual: $[0.82, -1.2, 0.45, \ldots, 1.1]$
+
+\begin{align}
+\text{Step 1: } & \mu = 0.15 \\
+\text{Step 2: } & \sigma^2 = 0.89 \\
+\text{Step 3: Normalize: } & \frac{0.82-0.15}{\sqrt{0.89}} = 0.71 \\
+\text{Step 4: Scale \& shift: } & \gamma \cdot 0.71 + \beta
+\end{align}
+
+Result: Mean=0, Var=1 $\rightarrow$ \textbf{stable training}!
+
+\textbf{Why NOT Batch Normalization?}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\hline
+\textbf{Issue} & \textbf{Batch Norm} & \textbf{Layer Norm} \\
+\hline
+Variable sequence lengths & $\times$ Padding ruins stats & \checkmark Works fine \\
+Small batches (4-8) & $\times$ Unstable variance & \checkmark Batch-independent \\
+Train vs Inference & $\times$ Different (needs running avg) & \checkmark Same statistics \\
+\hline
+\end{tabular}
+\caption{Batch Normalization vs Layer Normalization in Transformers}
+\end{table}
+
+% ============================================================
+\subsubsection{Component 4: Position-wise Feed-Forward Network -- The Non-Linear Transformer}
+% ============================================================
+
+\textbf{Architecture}:
+\begin{itemize}
+    \item Layer 1: $\mathbb{R}^{512} \rightarrow \mathbb{R}^{2048}$ (Expansion)
+    \item ReLU Activation: Introduces non-linearity
+    \item Layer 2: $\mathbb{R}^{2048} \rightarrow \mathbb{R}^{512}$ (Compression)
+\end{itemize}
+
+\textbf{Mathematical Definition}:
+\begin{equation}
+\text{FFN}(x) = \text{ReLU}(x \cdot W_1 + b_1) \cdot W_2 + b_2
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $W_1 \in \mathbb{R}^{512 \times 2048}$, $W_2 \in \mathbb{R}^{2048 \times 512}$
+    \item Applied independently to each position
+\end{itemize}
+
+\textbf{Dimensions}:
+\begin{itemize}
+    \item \textbf{Input}: 512
+    \item \textbf{Hidden}: 2048 neurons (4$\times$ expansion)
+    \item \textbf{Output}: 512
+\end{itemize}
+
+\textbf{Output}:
+\begin{align}
+Y_1 &= \text{FFN}(Z_{\text{norm},1}) \\
+Y_2 &= \text{FFN}(Z_{\text{norm},2}) \\
+Y_3 &= \text{FFN}(Z_{\text{norm},3})
+\end{align}
+
+Each still 512-dimensional.
+
+\textbf{Why This Design?}
+
+\textbf{1. Non-Linearity Introduction}:
+
+Self-attention is mostly linear operations:
+
+Without ReLU: Just stacked linear transformations = one big linear transformation
+
+Mathematical proof:
+\begin{equation}
+(W_2 \cdot W_1) \cdot x = W_{\text{combined}} \cdot x \quad \text{(still linear!)}
+\end{equation}
+
+With ReLU:
+\begin{equation}
+\text{ReLU}(x \cdot W_1) \cdot W_2 \neq W_{\text{combined}} \cdot x \quad \text{(non-linear!)}
+\end{equation}
+
+\textbf{Why ReLU?}
+\begin{itemize}
+    \item \textbf{Introduces non-linearity}: Enables complex function approximation
+    \item \textbf{Allows modeling complex functions}: Universal approximation theorem
+    \item \textbf{Helps tokens transform independently}: Each processed separately
+\end{itemize}
+
+ReLU enables \textbf{complex function approximation} (universal approximation theorem)!
+
+\textbf{2. Dimensional Expansion}:
+
+$512 \rightarrow 2048 \rightarrow 512$ creates a ``bottleneck'':
+\begin{itemize}
+    \item Allows network to learn \textbf{rich intermediate representations}
+    \item More expressive than maintaining 512 dimensions throughout
+    \item 4$\times$ expansion empirically proven optimal
+\end{itemize}
+
+\textbf{Why 2048 neurons?}
+
+Increasing dimensionality gives more modeling capacity, allowing each token representation to become more expressive.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\hline
+\textbf{Hidden Size} & \textbf{Result} \\
+\hline
+2$\times$ (1024) & Underfitting, poor performance \\
+\textbf{4$\times$ (2048)} & \textbf{\checkmark Sweet spot!} \\
+8$\times$ (4096) & Overfitting, slow, memory issues \\
+\hline
+\end{tabular}
+\caption{Impact of FFN Hidden Dimension Size}
+\end{table}
+
+\textbf{3. Position-wise Processing}:
+\begin{itemize}
+    \item Each token processed \textbf{independently}
+    \item Enables full parallelization on GPUs
+    \item Maintains sequence length (3 tokens in, 3 tokens out)
+\end{itemize}
+
+\textbf{4. Parameter Count}:
+\begin{equation}
+\text{FFN parameters: } 512 \times 2048 + 2048 \times 512 = 2{,}097{,}152
+\end{equation}
+
+\begin{equation}
+\text{Attention parameters: } 512 \times 512 \times 4 = 1{,}048{,}576
+\end{equation}
+
+FFN contains 66\% of encoder layer parameters!
+
+\textbf{Concrete Example -- ``How are you''}:
+
+Token ``How'': $z_{1,\text{norm}} \in \mathbb{R}^{512}$
+
+\begin{align}
+\text{Step 1: Expand} \quad & h_1 = \text{ReLU}(z_{1,\text{norm}} \cdot W_1 + b_1) \in \mathbb{R}^{2048} \\
+\text{Step 2: Compress} \quad & \text{FFN}_1 = h_1 \cdot W_2 + b_2 \in \mathbb{R}^{512}
+\end{align}
+
+Applied to all 3 tokens independently!
+
+% ============================================================
+\subsubsection{Component 5: Why 6 Encoder Layers? The Depth Magic}
+% ============================================================
+
+\textbf{Progressive Refinement}:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lll}
+\hline
+\textbf{Layer} & \textbf{What It Learns} & \textbf{``How are you'' Example} \\
+\hline
+Layer 1 & Basic word relationships & ``How'' $\leftrightarrow$ ``are'', ``are'' $\leftrightarrow$ ``you'' \\
+Layer 2 & Syntactic structure & Subject-verb agreement \\
+Layer 3 & Semantic relationships & Question pattern recognition \\
+Layer 4 & Pragmatic understanding & Social greeting context \\
+Layer 5 & Domain knowledge & Conversational patterns \\
+Layer 6 & High-level abstractions & Complete utterance meaning \\
+\hline
+\end{tabular}
+\caption{Progressive Refinement Across 6 Encoder Layers}
+\end{table}
+
+\textbf{Empirical Findings}:
+\begin{itemize}
+    \item \textbf{Too few layers (1-2)}: Cannot capture complex linguistic patterns
+    \item \textbf{Too many layers (12+)}: Diminishing returns, overfitting risk
+    \item \textbf{6 layers}: Sweet spot for translation tasks in original paper
+\end{itemize}
+
+\textbf{Modern models}:
+\begin{itemize}
+    \item BERT-base: 12 layers
+    \item BERT-large: 24 layers
+    \item GPT-3: 96 layers
+    \item GPT-4: $\sim$120 layers (rumored)
+\end{itemize}
+
+\textbf{Mathematical Justification}:
+
+Each layer applies a transformation: $\text{Layer}_{i+1} = f(\text{Layer}_i)$
+
+\begin{align}
+\text{Layer 1: } & y_1 = f_1(x) \\
+\text{Layer 2: } & y_2 = f_2(y_1) \\
+& \vdots \\
+\text{Layer 6: } & y_6 = f_6(y_5)
+\end{align}
+
+Each function $f_i$ learns \textbf{different aspects of language}!
+
+\textbf{Why NOT 1 Deep Layer?}
+
+\begin{align}
+\text{One layer: } & y = f_{\text{huge}}(x) \quad \text{(tries to learn everything at once)} \\
+\text{Six layers: } & y = f_6(f_5(f_4(f_3(f_2(f_1(x)))))) \quad \text{(hierarchical learning)}
+\end{align}
+
+Hierarchical learning is \textbf{easier to optimize} and \textbf{more effective}!
+
+% ============================================================
+\subsection{Complete Mathematical Formulation}
+% ============================================================
+
+For encoder layer $\ell$:
+
+\textbf{Step 1: Multi-Head Attention with Residual}
+\begin{equation}
+Z_\ell = \text{LayerNorm}(X_\ell + \text{MultiHeadAttention}(X_\ell))
+\end{equation}
+
+\textbf{Step 2: Feed-Forward with Residual}
+\begin{equation}
+X_{\ell+1} = \text{LayerNorm}(Z_\ell + \text{FFN}(Z_\ell))
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $X_\ell$: Input to layer $\ell$
+    \item $X_{\ell+1}$: Output of layer $\ell$ (input to layer $\ell+1$)
+\end{itemize}
+
+\textbf{Complete 6-Layer Stack}:
+\begin{align}
+X^{(0)} &= X \quad \text{(Input: embeddings + PE)} \\
+X^{(1)} &= \text{EncoderLayer}_1(X^{(0)}) \\
+X^{(2)} &= \text{EncoderLayer}_2(X^{(1)}) \\
+& \vdots \\
+X^{(6)} &= \text{EncoderLayer}_6(X^{(5)}) \quad \text{(Final output)}
+\end{align}
+
+% ============================================================
+\subsection{Complete PyTorch Implementation}
+% ============================================================
+
+\begin{lstlisting}[language=Python, caption={Complete Transformer Encoder Implementation}]
+import torch
+import torch.nn as nn
+import math
+
+class EncoderLayer(nn.Module):
+    """
+    Single Transformer Encoder Layer
+    """
+    def __init__(self, d_model=512, num_heads=8, d_ff=2048, dropout=0.1):
+        super().__init__()
+        
+        # Multi-Head Attention
+        self.self_attention = nn.MultiheadAttention(d_model, num_heads, 
+                                                     dropout=dropout)
+        
+        # Feed-Forward Network
+        self.feed_forward = nn.Sequential(
+            nn.Linear(d_model, d_ff),      # 512 -> 2048
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_ff, d_model)       # 2048 -> 512
+        )
+        
+        # Layer Normalization
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        
+        # Dropout
+        self.dropout = nn.Dropout(dropout)
+    
+    def forward(self, x):
+        """
+        Args:
+            x: (batch_size, seq_len, d_model) 
+                for "How are you"[1][3]
+        Returns:
+            encoded_output, attention_weights
+        """
+        # Step 1: Multi-Head Attention with residual
+        attn_output, attn_weights = self.self_attention(x, x, x)
+        x = self.norm1(x + self.dropout(attn_output))  # Residual + LayerNorm
+        
+        # Step 2: Feed-Forward with residual  
+        ff_output = self.feed_forward(x)
+        x = self.norm2(x + self.dropout(ff_output))    # Residual + LayerNorm
+        
+        return x, attn_weights
+
+
+class TransformerEncoder(nn.Module):
+    """
+    Complete 6-Layer Transformer Encoder
+    """
+    def __init__(self, num_layers=6, d_model=512, num_heads=8, 
+                 d_ff=2048, dropout=0.1):
+        super().__init__()
+        
+        self.layers = nn.ModuleList([
+            EncoderLayer(d_model, num_heads, d_ff, dropout)
+            for _ in range(num_layers)
+        ])
+    
+    def forward(self, x):
+        """
+        Process through all 6 encoder layers
+        """
+        all_attention_weights = []
+        
+        for layer in self.layers:
+            x, attn_weights = layer(x)
+            all_attention_weights.append(attn_weights)
+        
+        return x, all_attention_weights
+
+
+# ============================================================
+# COMPLETE USAGE EXAMPLE: "How are you"
+# ============================================================
+
+def process_sentence():
+    # Configuration
+    vocab_size = 50000
+    d_model = 512
+    num_layers = 6
+    
+    # Input: "How are you" -> Token IDs
+    token_ids = torch.tensor([[1523][2891][4562]])  # (1, 3)
+    
+    # Step 1: Embedding + Positional Encoding
+    embedding = nn.Embedding(vocab_size, d_model)
+    pos_encoding = PositionalEncoding(d_model)
+    
+    # Get embeddings and add positional info
+    embeddings = embedding(token_ids)        # (1, 3, 512)
+    x = pos_encoding(embeddings)            # (1, 3, 512)
+    
+    print(f"Input embeddings shape: {x.shape}")
+    
+    # Step 2: Pass through 6-layer encoder
+    encoder = TransformerEncoder(num_layers=6)
+    final_output, all_attention_weights = encoder(x)
+    
+    print(f"Final encoded output shape: {final_output.shape}")
+    print(f"Number of layers: {len(all_attention_weights)}")
+    
+    # Each layer's attention focuses on different aspects
+    for i, weights in enumerate(all_attention_weights):
+        print(f"Layer {i+1} attention shape: {weights.shape}")
+    
+    return final_output
+
+# Run the example
+final_representations = process_sentence()
+\end{lstlisting}
+
+% ============================================================
+\subsection{Information Flow Through 6 Layers}
+% ============================================================
+
+\textbf{Layer 1: Basic Word Relationships}
+\begin{itemize}
+    \item ``How'' pays attention to ``are'' (76\%), ``you'' (24\%)
+    \item Learns they form a question pattern
+\end{itemize}
+
+\textbf{Layer 2: Syntactic Structure}
+\begin{itemize}
+    \item ``are'' as verb connects to subject ``you'' and auxiliary ``How''
+    \item Builds grammatical relationships
+\end{itemize}
+
+\textbf{Layer 3: Semantic Understanding}
+\begin{itemize}
+    \item Recognizes ``How are you'' as greeting pattern
+    \item Connects to social interaction context
+\end{itemize}
+
+\textbf{Layer 4: Pragmatic Analysis}
+\begin{itemize}
+    \item Understands expected responses (``I'm fine'', ``Good thanks'')
+    \item Captures conversational flow
+\end{itemize}
+
+\textbf{Layer 5: Domain Knowledge}
+\begin{itemize}
+    \item Social etiquette patterns
+    \item Cultural context of greetings
+\end{itemize}
+
+\textbf{Layer 6: High-Level Abstraction}
+\begin{itemize}
+    \item Complete utterance meaning
+    \item Ready for task-specific processing (translation, classification, etc.)
+\end{itemize}
+
+% ============================================================
+\subsection{Key Insights Summary}
+% ============================================================
+
+\begin{enumerate}
+    \item \textbf{Multi-Head Attention}: Each word attends to all others $\rightarrow$ contextualized!
+    \item \textbf{Residual Connections}: ``$+1$'' gradient path $\rightarrow$ no vanishing gradients!
+    \item \textbf{Layer Normalization}: Mean=0, Var=1 $\rightarrow$ stable training!
+    \item \textbf{Feed-Forward}: ReLU introduces non-linearity $\rightarrow$ complex functions!
+    \item \textbf{6 Layers}: Hierarchical learning $\rightarrow$ low to high level understanding!
+    \item \textbf{Position-wise Processing}: Maintains parallelizability while allowing rich transformations
+\end{enumerate}
+
+This encoder architecture creates increasingly sophisticated representations, transforming raw token embeddings into contextually rich, semantically meaningful vectors ready for downstream tasks!
+% ============================================================
+\section{Conclusion}
+% ============================================================
+
+Self-attention is the revolutionary mechanism enabling transformers to:
+
+\begin{itemize}
+    \item \textbf{Create context-aware representations}: Solving the ``bank'' ambiguity problem
+    \item \textbf{Process sequences in parallel}: Dramatically faster than RNNs
+    \item \textbf{Capture long-range dependencies}: Direct connections between any tokens
+    \item \textbf{Scale to billions of parameters}: GPT-3 (175B), GPT-4 (rumored 1.8T)
+\end{itemize}
+
+\textbf{The Mathematical Essence}:
+
+\begin{equation}
+\boxed{y_{\text{word}} = \sum_{i=1}^{n} \underbrace{\text{softmax}(q_{\text{word}} \cdot k_i)}_{\text{attention weight}} \cdot v_i}
+\end{equation}
+
+Each word becomes a \textbf{learned weighted combination} of all words in context. This simple yet powerful idea revolutionized artificial intelligence and enabled:
+\begin{itemize}
+    \item ChatGPT and large language models
+    \item Modern machine translation systems
+    \item Code generation tools
+    \item Protein structure prediction (AlphaFold)
+    \item And countless other applications
+\end{itemize}
+
+\textbf{All parameters} (embeddings, \(W^Q\), \(W^K\), \(W^V\)) are learned via backpropagation during training on massive datasets, enabling the model to discover semantic relationships and contextual patterns automatically!
+
+
+\end{document}
